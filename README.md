@@ -18,16 +18,16 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 
 ## Availability
 
-| Capability | Status |
-| --- | --- |
-| `pcx --help`, `pcx --version` | Available |
-| MCAP metadata and topic listing | Planned for v0.1 |
-| ROS 2 `PointCloud2` frame extraction | Planned for v0.1 |
-| Binary and ASCII PCD output | Planned for v0.1 |
-| Crop, field selection, frame-local voxel reduction | Planned |
-| PLY, LAS/LAZ and terminal rendering | Planned |
-| AWS/S3 upload and cloud credentials | Out of scope |
-| macOS and Windows support | Undecided future work |
+| Capability                                         | Status                |
+| ---                                                | ---                   |
+| `pcx --help`, `pcx --version`                      | Available             |
+| MCAP metadata and topic listing                    | Planned for v0.1      |
+| ROS 2 `PointCloud2` frame extraction               | Planned for v0.1      |
+| Binary and ASCII PCD output                        | Planned for v0.1      |
+| Crop, field selection, frame-local voxel reduction | Planned               |
+| PLY, LAS/LAZ and terminal rendering                | Planned               |
+| AWS/S3 upload and cloud credentials                | Out of scope          |
+| macOS and Windows support                          | Undecided future work |
 
 ## Install
 

@@ -17,24 +17,24 @@
 
 ### Color Palette
 
-| Role | Hex | CSS Variable |
-|------|-----|--------------|
-| Primary | `#0F172A` | `--color-primary` |
-| On Primary | `#FFFFFF` | `--color-on-primary` |
-| Secondary | `#1E293B` | `--color-secondary` |
-| On Secondary | `#FFFFFF` | `--color-on-secondary` |
-| Accent/CTA | `#22C55E` | `--color-accent` |
-| On Accent/CTA | `#0F172A` | `--color-on-accent` |
-| Background | `#020617` | `--color-background` |
-| Foreground | `#F8FAFC` | `--color-foreground` |
-| Card | `#0E1223` | `--color-card` |
-| Card Foreground | `#F8FAFC` | `--color-card-foreground` |
-| Muted | `#1A1E2F` | `--color-muted` |
+| Role             | Hex       | CSS Variable               |
+|------------------|-----------|----------------------------|
+| Primary          | `#0F172A` | `--color-primary`          |
+| On Primary       | `#FFFFFF` | `--color-on-primary`       |
+| Secondary        | `#1E293B` | `--color-secondary`        |
+| On Secondary     | `#FFFFFF` | `--color-on-secondary`     |
+| Accent/CTA       | `#22C55E` | `--color-accent`           |
+| On Accent/CTA    | `#0F172A` | `--color-on-accent`        |
+| Background       | `#020617` | `--color-background`       |
+| Foreground       | `#F8FAFC` | `--color-foreground`       |
+| Card             | `#0E1223` | `--color-card`             |
+| Card Foreground  | `#F8FAFC` | `--color-card-foreground`  |
+| Muted            | `#1A1E2F` | `--color-muted`            |
 | Muted Foreground | `#94A3B8` | `--color-muted-foreground` |
-| Border | `#334155` | `--color-border` |
-| Destructive | `#EF4444` | `--color-destructive` |
-| On Destructive | `#000000` | `--color-on-destructive` |
-| Ring | `#FFFFFF` | `--color-ring` |
+| Border           | `#334155` | `--color-border`           |
+| Destructive      | `#EF4444` | `--color-destructive`      |
+| On Destructive   | `#000000` | `--color-on-destructive`   |
+| Ring             | `#FFFFFF` | `--color-ring`             |
 
 **Color Notes:** Code dark + endpoint green + syntax colors
 

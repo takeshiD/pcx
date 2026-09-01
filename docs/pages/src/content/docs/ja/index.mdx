@@ -1,0 +1,39 @@
+---
+title: pcx
+description: 点群recordingが存在する場所で調査・縮小するためのtoolbox。
+template: splash
+hero:
+  tagline: edge LinuxとSSH workflowのためのshell-native点群workbench。
+  actions:
+    - text: Architectureを読む
+      link: /pcx/ja/architecture/
+      icon: right-arrow
+      variant: primary
+    - text: 開発状況を見る
+      link: /pcx/ja/status/
+      icon: open-book
+      variant: minimal
+---
+
+`pcx`は、robotから何GBものdataを移動する前にrecordingの内容を把握するためのtoolです。bounded managed memoryとbinary-safeなstdoutを持つ、同期的な単一実行ファイルとして設計されています。
+
+<ul class="status-list">
+  <li class="status-card" data-state="available"><strong>利用可能</strong><span>package skeleton、help/version、architecture、test、Nix、delivery基盤。</span></li>
+  <li class="status-card" data-state="planned"><strong>v0.1で予定</strong><span>MCAP metadata、Topic一覧、ROS 2 PointCloud2の一frameをPCDへ出力。</span></li>
+  <li class="status-card" data-state="out"><strong>対象外</strong><span>AWS/S3 client、cloud credential、daemon、GUI、ROS runtime。</span></li>
+</ul>
+
+## 一つのworkflow
+
+```text
+inspect -> reduce -> 既存のshell toolでtransfer
+```
+
+```bash
+# 合意済みのv0.1 interface — 現在は未実装です。
+pcx info run.mcap
+pcx topics run.mcap --json
+pcx extract run.mcap --topic /lidar/points --frame 0 -o frame.pcd
+```
+
+文書では現在利用できるものと計画中のものを明示的に区別します。

@@ -1,0 +1,38 @@
+---
+title: Architecture
+description: Control plane, execution modes, data model and safety contracts.
+---
+
+import ArchitectureMap from '../../components/ArchitectureMap.astro';
+
+`pcx` separates a control plane that proves a job is safe from two data planes that either retain container bytes or decode point semantics.
+
+<ArchitectureMap lang="en" />
+
+## Package boundary
+
+One crates.io package, `pcx-cli`, contains a library target and the `pcx` binary. Internal seams are deep modules, not separately published crates:
+
+```text
+cli -> core <- mcap
+              ros2
+              pcd
+              ops
+```
+
+Format modules depend on `core`; `core` never imports a format module. The CLI assembles adapters but owns no format behavior.
+
+## Data model
+
+`PointView` owns reference-counted source bytes and a validated layout. `PointBatch` owns typed columns for operators. The Planner chooses whether materialization is needed and accounts for it before execution.
+
+## Hard contracts
+
+- No silent field or metadata loss.
+- Managed memory must be bounded before execution.
+- Temporal operators are frame-local by default.
+- File output is committed atomically after success.
+- Machine-readable output is versioned.
+- No network client or async runtime belongs in the product.
+
+Read the complete repository document in [`docs/ARCHITECTURE.md`](https://github.com/takeshiD/pcx/blob/main/docs/ARCHITECTURE.md).

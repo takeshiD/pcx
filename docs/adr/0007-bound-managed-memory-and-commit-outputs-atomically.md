@@ -1,0 +1,3 @@
+# Bound managed memory and commit outputs atomically
+
+`--memory-limit` is a hard budget for memory managed by `pcx`, including batches, decoded columns, operator and encoder state, queued output, multipart buffers, and spool indexes; a job whose peak managed use cannot be proven before execution is rejected, while whole-process RSS limits remain an operating-system concern. Local output is written beside its destination and atomically renamed only after success, existing files require `--force`, interruption removes temporary output and aborts multipart uploads with exit 130, and an expected downstream broken pipe does not emit a noisy failure.

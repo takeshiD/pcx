@@ -1,6 +1,31 @@
 [package]
-name = "pcx"
+name = "pcx-cli"
 version = "0.1.0"
 edition = "2024"
+description = "A shell-native toolbox for inspecting and reducing point-cloud recordings on edge Linux systems"
+readme = "README.md"
+repository = "https://github.com/takeshiD/pcx"
+homepage = "https://takeshid.github.io/pcx/"
+license = "MIT"
+include = [
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/LICENSE",
+    "/README.md",
+    "/README.ja.md",
+    "/src/**",
+    "/tests/**",
+]
+keywords = ["point-cloud", "robotics", "mcap", "lidar", "cli"]
+categories = ["command-line-utilities", "science::robotics"]
+
+[lib]
+name = "pcx_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pcx"
+path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4.5", features = ["derive"] }

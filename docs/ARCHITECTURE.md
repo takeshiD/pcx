@@ -1,0 +1,178 @@
+# pcx Architecture
+
+Status: accepted direction; product modules are planned unless marked available.
+
+## Purpose and boundary
+
+`pcx` is a synchronous, bounded-memory CLI for investigating and reducing point-cloud recordings on edge Linux systems. It composes with local files, stdout, `ssh`, and `scp`. It does not implement a GUI, daemon, network listener, AWS client, S3 client, or credential provider.
+
+The first product slice reads MCAP, identifies ROS 2 `sensor_msgs/msg/PointCloud2` Topics, selects one Point Frame, and writes binary or ASCII PCD.
+
+## Package and module topology
+
+The crates.io package is `pcx-cli`; its binary target is `pcx`. Product code is split into deep modules rather than separately published packages.
+
+```text
+src/
+├── main.rs        process entrypoint only
+├── lib.rs         internal library root
+├── cli/           argument grammar and presentation
+├── core/          domain types, JobSpec, Planner, Executor
+├── mcap/          MCAP container adapter
+├── ros2/          strict CDR and PointCloud2 adapter
+├── pcd/           PCD reader/writer adapter
+└── ops/           semantic point operators
+```
+
+Allowed dependencies:
+
+```text
+cli  -> core, mcap, ros2, pcd, ops
+mcap -> core
+ros2 -> core
+pcd  -> core
+ops  -> core
+core -> standard library and domain-focused utilities only
+```
+
+`core` never imports a format adapter. The CLI assembles registries/adapters but contains no format logic.
+
+## Control plane
+
+Every command compiles into a logical job before touching point payloads.
+
+```text
+CLI arguments
+    |
+    v
+JobSpec ---------> validation errors
+    |
+    v
+Planner ---------> capability + fidelity + memory checks
+    |
+    v
+ExecutionPlan ---> human/JSON explanation
+    |
+    v
+Executor
+```
+
+`JobSpec` is an internal seam during 0.x, not a serialized or public Rust API. JSON command output is public and carries `schema_version`.
+
+## Two data planes
+
+Container semantics and point semantics are deliberately separate.
+
+```text
+                         +---------------------------+
+                         |      ExecutionPlan        |
+                         +-------------+-------------+
+                                       |
+                 +---------------------+--------------------+
+                 |                                          |
+        CONTAINER PASSTHROUGH                       SEMANTIC PIPELINE
+                 |                                          |
+MCAP -> ContainerRecord -> selection       MCAP -> ContainerRecord
+                 |                                          |
+                 v                                     strict CDR
+          container writer                                  |
+                                                            v
+                                                       PointFrame
+                                                            |
+                                             PointView or PointBatch
+                                                            |
+                                                        Operator*
+                                                            |
+                                                         Encoder
+```
+
+The v0.1 frame-to-PCD path uses the semantic pipeline. Future reduced-MCAP selection may use passthrough so unknown messages, schemas, and payload bytes survive without point decoding.
+
+## Core data model
+
+### Point schema
+
+`PointSchema` is ordered and schema-driven. Every `PointField` records its name, primitive representation, element count, and optional known semantic. Operators must preserve fields they do not interpret unless explicit loss authorization says otherwise.
+
+### View and materialized batch
+
+```rust
+enum PointData {
+    View(PointView),
+    Columns(PointBatch),
+}
+```
+
+- `PointView` owns reference-counted source bytes and a validated layout. Reading does not require a payload copy.
+- `PointBatch` owns typed columns for operators that benefit from SoA access.
+- Materialization is planned explicitly and only for required fields.
+- Rust borrowing lifetimes do not propagate through the pipeline.
+
+A no-op/lossless conversion preserves field names, primitive types, element counts, bit patterns, timestamps, and frame identity. Padding and byte offsets are representation details. An operator that changes point count produces an unorganized cloud (`height = 1`).
+
+## MCAP and ROS 2 boundary
+
+The official Rust `mcap` crate supplies record, summary, CRC, chunk, zstd, and LZ4 behavior. `pcx` wraps its sans-IO state machines with bounded synchronous `Read + Seek`; it does not require a whole-file buffer or an async runtime.
+
+Only the ROS 2 CDR shape required for `sensor_msgs/msg/PointCloud2` is decoded in v0.1. The decoder validates encapsulation, alignment, sequence lengths, multiplication/addition overflow, `point_step`, `row_step`, endianness, field ranges, and payload extent before exposing a `PointView`.
+
+## Frame selection
+
+- `--frame N`: zero-based message index after Topic selection.
+- `--at T`: first Point Frame whose MCAP log time is at or after `T` relative to recording start.
+- The selectors are mutually exclusive.
+- No matching Point Frame is a typed not-found error.
+
+Semantic operators on temporal input apply independently to each Point Frame unless a future explicit accumulation operation is selected.
+
+## Fidelity contract
+
+The Planner compares source, operator, encoder, and sink capabilities. A job is rejected when the requested output cannot represent retained fields or temporal/spatial metadata. Loss requires an explicit category-specific authorization; generic warning-only loss is not accepted.
+
+## Managed-memory contract
+
+`--memory-limit` is a hard budget for allocations controlled by `pcx`:
+
+- input and decompression batches;
+- decoded columns;
+- operator state;
+- encoder buffers;
+- queued output;
+- spool indexes.
+
+The Planner computes a conservative peak before execution. If the peak depends on an unbounded property of the input, the job is rejected or requires an explicit bounded alternative. Whole-process RSS, shared libraries, allocator metadata, page cache, and OS mappings are outside this contract and may be constrained with Linux cgroups.
+
+## IO and failure semantics
+
+- File output is written to a sibling temporary file and atomically renamed after successful finish.
+- Existing destinations require `--force`.
+- Ctrl-C cleans temporary state and exits 130.
+- Expected downstream broken pipes do not produce noisy diagnostics.
+- Binary data uses stdout only when explicitly selected; logs and progress always use stderr.
+- Spooling is disabled unless explicitly authorized.
+
+## JSON compatibility
+
+Machine output uses an envelope:
+
+```json
+{
+  "schema_version": 1,
+  "command": "info",
+  "data": {}
+}
+```
+
+Within a schema version, changes are additive only. Removing a field or changing its type requires a new schema version. Human output is not a byte-stable API.
+
+## Platform and dependency policy
+
+Supported systems are `x86_64-linux` and `aarch64-linux`, both tested natively. Prefer pure Rust dependencies, rustls, and no runtime dynamic-library requirements. zstd/LZ4 build complexity is accepted because compressed MCAP is essential; Nix and release checks must prove both target builds.
+
+## Security boundary
+
+Inputs are untrusted. Every length and offset is checked before allocation or slicing. The tool opens no network listener, starts no browser, loads no dynamic plugin, and holds no cloud credential. Terminal rendering must not emit escape graphics to redirected stdout.
+
+## Decision records
+
+The rationale behind hard-to-reverse choices is recorded in [`docs/adr`](./adr/README.md).

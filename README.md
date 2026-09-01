@@ -1,0 +1,124 @@
+# pcx
+
+[Documentation](https://takeshid.github.io/pcx/) · [日本語](./README.ja.md)
+
+`pcx` is a shell-native toolbox for inspecting and reducing point-cloud recordings on edge Linux systems.
+
+> **Project status:** foundation stage. The executable currently provides `--help` and `--version`; MCAP and point-cloud commands described below are planned for v0.1 and are not implemented yet.
+
+## Why pcx?
+
+Large sensor recordings often live on robots and industrial PCs where a desktop viewer is unavailable and copying the whole file is wasteful. `pcx` is designed around one workflow:
+
+```text
+inspect -> reduce -> transfer with existing shell tools
+```
+
+The product aims to remain a single executable with bounded memory, binary-safe stdout, actionable stderr diagnostics, and no ROS runtime, GUI, daemon, AWS, or S3 client.
+
+## Availability
+
+| Capability                                         | Status                |
+| ---                                                | ---                   |
+| `pcx --help`, `pcx --version`                      | Available             |
+| MCAP metadata and topic listing                    | Planned for v0.1      |
+| ROS 2 `PointCloud2` frame extraction               | Planned for v0.1      |
+| Binary and ASCII PCD output                        | Planned for v0.1      |
+| Crop, field selection, frame-local voxel reduction | Planned               |
+| PLY, LAS/LAZ and terminal rendering                | Planned               |
+| AWS/S3 upload and cloud credentials                | Out of scope          |
+| macOS and Windows support                          | Undecided future work |
+
+## Install
+
+Until the first crates.io release, build from source:
+
+```bash
+git clone https://github.com/takeshiD/pcx.git
+cd pcx
+cargo install --path . --locked
+pcx --version
+```
+
+The planned registry command is:
+
+```bash
+cargo install pcx-cli --locked
+```
+
+With Nix:
+
+```bash
+nix run github:takeshiD/pcx -- --version
+nix develop github:takeshiD/pcx
+```
+
+## Planned v0.1 workflow
+
+The following interface documents the accepted v0.1 design; it is not available yet.
+
+```bash
+pcx info run.mcap
+pcx topics run.mcap --json
+pcx extract run.mcap \
+  --topic /lidar/points \
+  --frame 0 \
+  -o frame.pcd
+```
+
+Transfer remains the shell's job:
+
+```bash
+ssh robot 'pcx extract /data/run.mcap --topic /lidar/points --frame 0 -o -' \
+  > frame.pcd
+```
+
+## Architecture
+
+The implementation is one publishable Rust package with deep internal modules. Encoded container records remain separate from decoded point frames:
+
+```text
+CLI -> JobSpec -> Planner -> Executor
+                              |
+                 +------------+-------------+
+                 |                          |
+        container passthrough        semantic pipeline
+                                            |
+                            CDR -> PointView/PointBatch
+                                            |
+                                    operator -> encoder
+```
+
+See the [architecture document](./docs/ARCHITECTURE.md), [test strategy](./docs/TESTING.md), [implementation roadmap](./docs/ROADMAP.md), [domain language](./CONTEXT.md), and [decision records](./docs/adr/).
+
+## Development
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo check --all-targets --all-features
+cargo test --all-features
+nix flake check
+```
+
+The Starlight documentation lives in `docs/pages`:
+
+```bash
+npm --prefix docs/pages ci
+npm --prefix docs/pages run check
+npm --prefix docs/pages run build
+```
+
+## Supported systems
+
+- `x86_64-linux`: native build and full test suite
+- `aarch64-linux`: native build and full test suite
+- macOS and Windows: not currently supported; future support is undecided
+
+## Contributing
+
+Start with [CONTRIBUTING.md](./CONTRIBUTING.md). Security-sensitive reports should follow [SECURITY.md](./SECURITY.md).
+
+## License
+
+MIT © 2026 tkcd. See [LICENSE](./LICENSE).

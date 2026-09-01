@@ -1,0 +1,250 @@
+---
+interface Props {
+  lang?: 'en' | 'ja';
+}
+
+const { lang = 'en' } = Astro.props;
+
+const copy = lang === 'ja'
+  ? {
+      label: 'pcx の制御とデータ処理アーキテクチャ',
+      control: '制御プレーン',
+      modes: '実行モード',
+      cli: 'CLI 引数',
+      job: 'JobSpec',
+      planner: 'Planner',
+      plan: 'ExecutionPlan',
+      executor: 'Executor',
+      choose: '能力・損失・メモリを検証',
+      passthrough: 'コンテナ・パススルー',
+      passText: '点群をデコードせずレコードを選択',
+      semantic: '意味処理パイプライン',
+      decode: '厳密な CDR デコード',
+      view: 'PointView / PointBatch',
+      operators: 'フレーム単位演算',
+      output: 'Encoder → ファイル / stdout',
+    }
+  : {
+      label: 'pcx control and data processing architecture',
+      control: 'Control plane',
+      modes: 'Execution modes',
+      cli: 'CLI arguments',
+      job: 'JobSpec',
+      planner: 'Planner',
+      plan: 'ExecutionPlan',
+      executor: 'Executor',
+      choose: 'validates capability, loss, and memory',
+      passthrough: 'Container passthrough',
+      passText: 'select records without point decoding',
+      semantic: 'Semantic pipeline',
+      decode: 'strict CDR decode',
+      view: 'PointView / PointBatch',
+      operators: 'frame-local operators',
+      output: 'Encoder -> file / stdout',
+    };
+---
+
+<section class="architecture" aria-label={copy.label}>
+  <p class="eyebrow">{copy.control}</p>
+  <ol class="control-flow">
+    <li><span>01</span><strong>{copy.cli}</strong></li>
+    <li><span>02</span><strong>{copy.job}</strong></li>
+    <li><span>03</span><strong>{copy.planner}</strong><small>{copy.choose}</small></li>
+    <li><span>04</span><strong>{copy.plan}</strong></li>
+    <li><span>05</span><strong>{copy.executor}</strong></li>
+  </ol>
+
+  <div class="branch" role="group" aria-label={copy.modes}>
+    <article class="lane lane-pass">
+      <p class="lane-number">A</p>
+      <h3>{copy.passthrough}</h3>
+      <p>{copy.passText}</p>
+      <div class="mini-flow" aria-label={copy.passText}>
+        <code>MCAP</code><span aria-hidden="true">→</span><code>ContainerRecord</code><span aria-hidden="true">→</span><code>MCAP</code>
+      </div>
+    </article>
+
+    <article class="lane lane-semantic">
+      <p class="lane-number">B</p>
+      <h3>{copy.semantic}</h3>
+      <p>{copy.decode}</p>
+      <ol class="semantic-flow">
+        <li><code>ContainerRecord</code></li>
+        <li><code>{copy.decode}</code></li>
+        <li><code>{copy.view}</code></li>
+        <li><code>{copy.operators}</code></li>
+        <li><code>{copy.output}</code></li>
+      </ol>
+    </article>
+  </div>
+</section>
+
+<style>
+  .architecture {
+    margin-block: 2rem 3rem;
+    padding: clamp(1rem, 3vw, 2rem);
+    overflow: hidden;
+    border: 1px solid var(--pcx-border);
+    border-radius: 1rem;
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--sl-color-accent) 8%, transparent), transparent 40%),
+      var(--pcx-panel);
+  }
+
+  .eyebrow,
+  .lane-number {
+    margin: 0 0 0.75rem;
+    color: var(--pcx-code);
+    font: 600 0.75rem/1 var(--sl-font-mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .control-flow {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .control-flow li {
+    position: relative;
+    min-width: 0;
+    min-height: 7rem;
+    padding: 0.85rem;
+    border: 1px solid var(--pcx-border);
+    border-radius: 0.65rem;
+    background: var(--pcx-panel-strong);
+  }
+
+  .control-flow li:not(:last-child)::after {
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    right: -0.72rem;
+    width: 0.72rem;
+    border-top: 2px solid var(--sl-color-accent);
+    content: '';
+  }
+
+  .control-flow span,
+  .control-flow strong,
+  .control-flow small {
+    display: block;
+  }
+
+  .control-flow span {
+    margin-bottom: 1rem;
+    color: var(--pcx-muted);
+    font: 500 0.75rem/1 var(--sl-font-mono);
+  }
+
+  .control-flow strong {
+    overflow-wrap: normal;
+    color: var(--pcx-text);
+    font: 600 0.8rem/1.3 var(--sl-font-mono);
+  }
+
+  .control-flow small {
+    margin-top: 0.5rem;
+    color: var(--pcx-muted);
+    line-height: 1.35;
+  }
+
+  .branch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .lane {
+    min-width: 0;
+    padding: 1.25rem;
+    border: 1px solid var(--pcx-border);
+    border-top-width: 4px;
+    border-radius: 0.75rem;
+    background: var(--pcx-panel-strong);
+  }
+
+  .lane-pass {
+    border-top-color: #64748b;
+  }
+
+  .lane-semantic {
+    border-top-color: #22c55e;
+  }
+
+  .lane h3 {
+    margin: 0;
+    color: var(--pcx-text);
+    font: 600 1rem/1.3 var(--sl-font-mono);
+  }
+
+  .lane > p:not(.lane-number) {
+    color: var(--pcx-muted);
+  }
+
+  .mini-flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+  }
+
+  .mini-flow code {
+    font-size: 0.75rem;
+  }
+
+  .semantic-flow {
+    display: grid;
+    gap: 0.5rem;
+    margin: 1rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .semantic-flow li {
+    position: relative;
+    padding-left: 1.4rem;
+  }
+
+  .semantic-flow li::before {
+    position: absolute;
+    left: 0;
+    color: var(--sl-color-accent);
+    content: '↓';
+  }
+
+  .semantic-flow li:first-child::before {
+    content: '•';
+  }
+
+  code {
+    overflow-wrap: anywhere;
+    color: var(--pcx-code);
+  }
+
+  @media (max-width: 64rem) {
+    .control-flow {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .control-flow li:not(:last-child)::after {
+      display: none;
+    }
+  }
+
+  @media (max-width: 42rem) {
+    .control-flow,
+    .branch {
+      grid-template-columns: 1fr;
+    }
+
+    .control-flow li {
+      min-height: auto;
+    }
+  }
+</style>

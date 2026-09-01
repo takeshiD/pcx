@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a scoped product or engineering change.
+title: "feature: "
+labels: ["type:feature", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the workflow problem before proposing an interface.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Relevant constraints
+      description: Note memory, fidelity, format, stream, or compatibility constraints.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Product boundary
+      options:
+        - label: This request does not add AWS/S3, cloud credentials, a daemon, or a GUI.
+          required: true

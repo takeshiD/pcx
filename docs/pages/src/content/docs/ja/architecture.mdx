@@ -1,0 +1,38 @@
+---
+title: Architecture
+description: control plane、実行mode、data model、安全性contract。
+---
+
+import ArchitectureMap from '../../../components/ArchitectureMap.astro';
+
+`pcx`はjobの安全性を証明するcontrol planeと、container bytesを保持する／point semanticsをdecodeする二つのdata planeを分離します。
+
+<ArchitectureMap lang="ja" />
+
+## Package境界
+
+一つのcrates.io package `pcx-cli`がlibrary targetと`pcx` binaryを持ちます。内部のseamは別crateではなくdeep moduleです。
+
+```text
+cli -> core <- mcap
+              ros2
+              pcd
+              ops
+```
+
+format moduleは`core`へ依存し、`core`はformatをimportしません。CLIはadapterを組み立てますがformat固有処理を持ちません。
+
+## Data model
+
+`PointView`はreference-countedなsource bytesと検証済みlayoutを所有します。`PointBatch`はoperator向けのtyped columnを所有します。Plannerはmaterializeの必要性とmemoryを実行前に計算します。
+
+## Hard contract
+
+- field／metadataを黙って失わない。
+- managed memoryを実行前にboundできること。
+- temporal operatorは既定でframe単位。
+- file outputは成功後にatomic commit。
+- machine-readable outputはversion付き。
+- network client／async runtimeを製品へ含めない。
+
+詳細はrepositoryの[`docs/ARCHITECTURE.md`](https://github.com/takeshiD/pcx/blob/main/docs/ARCHITECTURE.md)を参照してください。

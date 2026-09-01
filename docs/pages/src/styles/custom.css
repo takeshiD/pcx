@@ -1,0 +1,108 @@
+:root {
+  --sl-font: 'IBM Plex Sans', system-ui, sans-serif;
+  --sl-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --sl-color-accent-low: #dcfce7;
+  --sl-color-accent: #15803d;
+  --sl-color-accent-high: #052e16;
+  --pcx-border: #cbd5e1;
+  --pcx-panel: #f8fafc;
+  --pcx-panel-strong: #f1f5f9;
+  --pcx-text: #0f172a;
+  --pcx-muted: #475569;
+  --pcx-code: #166534;
+}
+
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #052e16;
+  --sl-color-accent: #4ade80;
+  --sl-color-accent-high: #dcfce7;
+  --pcx-border: #334155;
+  --pcx-panel: #0e1223;
+  --pcx-panel-strong: #1a1e2f;
+  --pcx-text: #f8fafc;
+  --pcx-muted: #cbd5e1;
+  --pcx-code: #4ade80;
+}
+
+html {
+  scroll-padding-top: 5rem;
+}
+
+body {
+  text-rendering: optimizeLegibility;
+}
+
+:focus-visible {
+  outline: 3px solid var(--sl-color-accent);
+  outline-offset: 3px;
+}
+
+.hero h1,
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
+  font-family: var(--sl-font-mono);
+  letter-spacing: -0.025em;
+}
+
+.sl-markdown-content table {
+  display: table;
+  width: 100%;
+}
+
+.status-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-block: 1.5rem 2.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.status-card {
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--pcx-border);
+  border-radius: 0.75rem;
+  background: var(--pcx-panel);
+}
+
+.status-card strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--pcx-text);
+  font-family: var(--sl-font-mono);
+}
+
+.status-card span {
+  color: var(--pcx-muted);
+}
+
+.status-card[data-state='available'] {
+  border-top: 4px solid #16a34a;
+}
+
+.status-card[data-state='planned'] {
+  border-top: 4px solid #2563eb;
+}
+
+.status-card[data-state='out'] {
+  border-top: 4px solid #64748b;
+}
+
+@media (max-width: 50rem) {
+  .status-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

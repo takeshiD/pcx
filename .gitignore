@@ -1,1 +1,9 @@
 /target
+/result
+/.agent/worktrees
+/.direnv
+/docs/pages/node_modules
+/docs/pages/dist
+/docs/pages/.astro
+/fuzz/artifacts
+/fuzz/corpus

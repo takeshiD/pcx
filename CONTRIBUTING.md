@@ -12,6 +12,10 @@ nix develop
 
 or a Rust stable toolchain with `rustfmt` and `clippy`. Documentation additionally requires Node.js and npm.
 
+## Development workflow
+
+Follow [the repository workflow](./docs/WORKFLOW.md) for the required one-issue/one-branch/one-pull-request process and the branch and worktree naming conventions. Make all changes in a dedicated worktree; keep the primary `main` checkout for synchronization and inspection.
+
 ## Required checks
 
 ```bash

@@ -4,7 +4,7 @@
 
 ## Design and scope
 
-- Related issue:
+- Closes #
 - ADR added or updated, if needed:
 - Explicitly out of scope:
 

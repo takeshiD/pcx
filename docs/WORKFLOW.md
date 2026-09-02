@@ -61,7 +61,7 @@ Start each branch from the latest `origin/main`. For example, for issue 123:
 ```bash
 git fetch origin main
 git worktree add .agent/worktrees/add-123-mcap-info \
-  -b add-123-mcap-info origin/main
+  --no-track -b add-123-mcap-info origin/main
 cd .agent/worktrees/add-123-mcap-info
 git branch --show-current
 ```
@@ -69,6 +69,12 @@ git branch --show-current
 Before editing, confirm that the current branch and worktree names match. Keep generated files and build artifacts inside that worktree so concurrent tasks cannot interfere with one another.
 
 ## Pull requests and cleanup
+
+Push the issue branch and set its same-named remote branch as upstream:
+
+```bash
+git push --set-upstream origin add-123-mcap-info
+```
 
 Open the pull request from the issue branch into `main`. Keep it limited to the linked issue and include the information required by [CONTRIBUTING.md](../CONTRIBUTING.md). Run the relevant required checks before requesting review.
 

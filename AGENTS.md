@@ -4,9 +4,8 @@ This file is the source of truth for repository-wide instructions followed by co
 
 ## Agent configuration
 
-- Put tool-neutral skills, prompts, and other reusable agent assets under `.agents/`.
-- Expose a shared asset in `.codex/` or `.claude/` with a relative symbolic link instead of copying it.
-- Keep only genuinely tool-specific configuration in `.codex/` and `.claude/`.
+- Keep repository-owned agent rules under `.agents/rules/` and project-specific skills under `.agents/skills/`.
+- Use each agent tool's user-level installation for shared skills and configuration instead of vendoring or linking them into this repository.
 - Keep repository-wide conduct and workflow rules in this `AGENTS.md`.
 - Keep the root `CLAUDE.md` as a symbolic link to `AGENTS.md` so Codex and Claude Code receive the same rules.
 - Resolve every repository-owned symbolic link within the repository, and verify that it remains valid from a fresh checkout.

@@ -8,3 +8,4 @@
 /docs/pages/.astro
 /fuzz/artifacts
 /fuzz/corpus
+/.worktrees

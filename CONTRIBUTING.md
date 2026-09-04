@@ -12,6 +12,10 @@ nix develop
 
 or a Rust stable toolchain with `rustfmt` and `clippy`. Documentation additionally requires Node.js and npm.
 
+## Development workflow
+
+Follow the repository-wide agent and contribution rules in [AGENTS.md](./AGENTS.md), including the required one-issue/one-branch/one-worktree/one-pull-request workflow and naming conventions.
+
 ## Required checks
 
 ```bash

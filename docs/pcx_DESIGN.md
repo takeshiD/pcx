@@ -39,8 +39,10 @@ covered by committed end-to-end fixtures.
 
 ### 2.2 Later phases
 
-Field selection, crop, statistics, frame-local voxel reduction, PCD input,
-MCAP output, PLY, LAS/LAZ, and terminal rendering may follow v0.1.
+Field selection, crop, statistics, frame-local voxel reduction, PCD input CLI
+integration, PLY CLI integration, LAS/LAZ, and terminal rendering may follow
+v0.1. The strict PCD reader adapter and faithful one-message MCAP container
+passthrough are available.
 
 ### 2.3 Explicit non-goals
 
@@ -79,12 +81,18 @@ pcx info INPUT.mcap [--json]
 pcx topics INPUT.mcap [--json]
 pcx extract INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
   -o PATH|- [--encoding binary|ascii] [--memory-limit BYTES] [--force]
+pcx passthrough INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
+  -o PATH|- [--compression none|zstd|lz4] [--memory-limit BYTES] [--force]
 ```
 
 `--frame` is zero-based among messages matching the selected topic. `--at`
 selects the first frame at or after a duration from recording start. v0.1
 extracts exactly one frame, defaults to binary PCD, and requires an explicit
 file or stdout sink.
+
+`passthrough` selects exactly one encoded Topic message without semantic point
+decoding. Recording-level attachments, metadata, and private records are
+retained; derived MCAP structure is regenerated deterministically.
 
 ### Streams and failures
 

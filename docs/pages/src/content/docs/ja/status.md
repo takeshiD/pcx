@@ -22,7 +22,9 @@ description: 現在利用できる機能と今後の順序。
 ## その後
 
 - **Reduction:** field選択、crop、stats、frame単位voxel。
-- **Formats:** PCD入力、PLY CLI integration、LAS/LAZ、reduced MCAP出力。
+- **利用可能なFormat追加:** faithfulな1 message encoded MCAP passthrough。
+- **利用可能なFormat追加:** strict ASCII／little-endian binary PCD reader adapter。
+- **Formats:** PCD input CLI integration、PLY CLI integration、LAS/LAZ。
 
 scalar-vertex PLY reader/writer adapter は共通 schema の背後に実装済みですが、
 user-facing command はまだ公開していません。

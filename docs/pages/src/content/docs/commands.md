@@ -12,6 +12,8 @@ pcx info INPUT.mcap [--json]
 pcx topics INPUT.mcap [--json]
 pcx extract INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
   -o OUTPUT.pcd|- [--encoding binary|ascii] [--memory-limit BYTES] [--force]
+pcx passthrough INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
+  -o OUTPUT.mcap|- [--compression none|zstd|lz4] [--memory-limit BYTES] [--force]
 ```
 
 `pcx info` streams through an MCAP Source without decoding point frames. Human output and versioned JSON go to stdout; successful inspection leaves stderr empty.
@@ -26,6 +28,18 @@ pcx extract INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
 ```
 
 `--frame` is zero-based within messages matching the selected topic. `--at` selects the first frame at or after a duration such as `83.2s` from recording start. Exactly one selector and an explicit file or stdout sink are required. Binary PCD is the default. Missing topics, out-of-range frames, malformed messages and operations that cannot satisfy the memory budget fail before producing a committed output.
+
+## Encoded MCAP passthrough
+
+`pcx passthrough` selects one encoded message without PointCloud2 or point-field
+decoding. It preserves the Message payload, sequence and times; the exact
+Channel and optional Schema relationship; all recording-level attachments and
+metadata; and application-private records. Container structure, statistics and
+CRCs are regenerated; attachment and metadata indexes are omitted to keep
+writer memory bounded. Unknown future standard records fail explicitly because
+their preservation semantics are not yet defined. Compression defaults to
+single-threaded deterministic zstd; `none` and deterministic LZ4 are explicit
+alternatives.
 
 ## Streams and exit status
 

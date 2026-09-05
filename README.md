@@ -4,7 +4,7 @@
 
 `pcx` is a shell-native toolbox for inspecting and reducing point-cloud recordings on edge Linux systems.
 
-> **Project status:** early v0.1 development. The executable provides `pcx info`, `pcx topics`, one-frame `pcx extract`, `--help`, and `--version`.
+> **Project status:** active development. The executable provides MCAP inspection, one-frame PCD extraction, and faithful one-message MCAP passthrough.
 
 ## Why pcx?
 
@@ -25,6 +25,8 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 | MCAP Topic listing with human and JSON output      | Available             |
 | ROS 2 `PointCloud2` frame extraction               | Available             |
 | Binary and ASCII PCD output                        | Available             |
+| Strict PCD reader (CLI integration later)          | Available internally  |
+| Encoded one-message MCAP passthrough               | Available             |
 | Crop, field selection, frame-local voxel reduction | Planned               |
 | PLY scalar-vertex adapter (CLI integration later)  | Available internally  |
 | LAS/LAZ and terminal rendering                     | Planned               |
@@ -66,11 +68,22 @@ pcx extract run.mcap \
   --topic /lidar/points \
   --frame 0 \
   -o frame.pcd
+pcx passthrough run.mcap \
+  --topic /lidar/points \
+  --frame 0 \
+  --compression zstd \
+  -o selected.mcap
 ```
 
 Choose exactly one of `--frame INDEX` and `--at DURATION`. Binary PCD is the
 default; pass `--encoding ascii` for text PCD. `--memory-limit BYTES` is a hard
 managed-memory budget. Output must be an explicit path or `-` for stdout.
+
+`pcx passthrough` applies the same selector without decoding point fields. It
+preserves the selected encoded Message and its Channel/Schema relationship,
+plus recording-level attachments, metadata, and application-private records.
+Derived container structure, statistics, and CRCs are regenerated
+deterministically; attachment and metadata indexes are omitted to bound memory.
 
 Transfer remains the shell's job:
 

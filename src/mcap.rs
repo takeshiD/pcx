@@ -13,9 +13,10 @@ use std::{
 };
 
 use ::mcap::{
-    McapError, parse_record,
-    records::{Record, op},
+    Compression, McapError, parse_record,
+    records::{AttachmentHeader, MessageHeader, Metadata, Record, op},
     sans_io::linear_reader::{LinearReadEvent, LinearReader, LinearReaderOptions},
+    write::{NoSeek, WriteOptions, Writer},
 };
 
 use crate::core::{ErrorCategory, FrameSelector};
@@ -25,6 +26,8 @@ const ROS2_POINTCLOUD2_SCHEMA: &str = "sensor_msgs/msg/PointCloud2";
 const ROS2_SCHEMA_ENCODING: &str = "ros2msg";
 const ROS2_MESSAGE_ENCODING: &str = "cdr";
 const DECLARATION_INDEX_BYTES: u64 = u16::MAX as u64 + 1;
+const PASSTHROUGH_CHUNK_BYTES: u64 = 1024 * 1024;
+const PASSTHROUGH_LIBRARY: &str = concat!("pcx-cli/", env!("CARGO_PKG_VERSION"));
 
 /// A Schema associated with a discovered MCAP Channel.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -125,7 +128,11 @@ pub fn discover_topics<R: Read + Seek>(
                     message: format!("message count overflow for MCAP Channel {channel_id}"),
                 })?;
             }
-            ProbeRecord::Header { .. } | ProbeRecord::Metadata { .. } | ProbeRecord::DataEnd => {}
+            ProbeRecord::Header { .. }
+            | ProbeRecord::Metadata { .. }
+            | ProbeRecord::Attachment { .. }
+            | ProbeRecord::Unknown { .. }
+            | ProbeRecord::DataEnd => {}
         }
     }
 
@@ -261,6 +268,21 @@ impl SourceOptions {
             .checked_add(u64::try_from(self.max_record_bytes).ok()?)?
             .checked_add(DECLARATION_INDEX_BYTES)
     }
+
+    /// Conservative retained bytes for one-record MCAP container replay.
+    pub fn passthrough_retained_bytes(self) -> Option<u64> {
+        let record = u64::try_from(self.max_record_bytes).ok()?;
+        let read = u64::try_from(self.read_chunk_bytes).ok()?;
+        // The plan, official writer declaration tables/summary, current input
+        // record, and record serialization may simultaneously retain copies of
+        // the selected Schema and current payload. The disabled attachment and
+        // metadata indexes prevent recording-length-dependent growth.
+        record
+            .checked_mul(6)?
+            .checked_add(read)?
+            .checked_add(DECLARATION_INDEX_BYTES)?
+            .checked_add(PASSTHROUGH_CHUNK_BYTES.checked_mul(2)?)
+    }
 }
 
 /// High-water marks observed while pulling records from a source.
@@ -312,7 +334,37 @@ pub enum ProbeRecord {
         publish_time: u64,
         data: Arc<[u8]>,
     },
+    Attachment {
+        log_time: u64,
+        create_time: u64,
+        name: String,
+        media_type: String,
+        data: Arc<[u8]>,
+    },
+    /// An application-private or future standard record.
+    Unknown {
+        opcode: u8,
+        data: Arc<[u8]>,
+    },
     DataEnd,
+}
+
+/// Deterministic codec compression for rewritten MCAP chunks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PassthroughCompression {
+    None,
+    Zstd,
+    Lz4,
+}
+
+/// A fully validated encoded-record selection ready for synchronous replay.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PassthroughPlan {
+    profile: String,
+    schema: Option<(u16, SchemaDeclaration)>,
+    channel_id: u16,
+    channel: ChannelDeclaration,
+    selected_record: u64,
 }
 
 /// One encoded message selected from all MCAP Channels for a Topic.
@@ -324,6 +376,7 @@ pub struct SelectedMessage {
     publish_time: u64,
     ros2_pointcloud2_candidate: bool,
     data: Arc<[u8]>,
+    record: u64,
 }
 
 impl SelectedMessage {
@@ -435,6 +488,13 @@ impl ProbeRecord {
                 ..
             } => topic.len() + message_encoding.len() + map_bytes(metadata),
             Self::Message { data, .. } => data.len(),
+            Self::Attachment {
+                name,
+                media_type,
+                data,
+                ..
+            } => name.len() + media_type.len() + data.len(),
+            Self::Unknown { data, .. } => data.len(),
             Self::DataEnd => 0,
         }
     }
@@ -667,9 +727,16 @@ impl ProbeError {
 }
 
 fn is_probe_record(opcode: u8) -> bool {
-    matches!(
+    !matches!(
         opcode,
-        op::HEADER | op::SCHEMA | op::CHANNEL | op::MESSAGE | op::METADATA | op::DATA_END
+        op::FOOTER
+            | op::CHUNK
+            | op::MESSAGE_INDEX
+            | op::CHUNK_INDEX
+            | op::ATTACHMENT_INDEX
+            | op::STATISTICS
+            | op::METADATA_INDEX
+            | op::SUMMARY_OFFSET
     )
 }
 
@@ -701,6 +768,15 @@ fn validate_probe_record_body(opcode: u8, data: &[u8]) -> Result<(), &'static st
         op::MESSAGE => {
             cursor.take(2 + 4 + 8 + 8)?;
             cursor.take_remaining();
+        }
+        op::ATTACHMENT => {
+            cursor.take(8 + 8)?;
+            cursor.string()?;
+            cursor.string()?;
+            let length = usize::try_from(cursor.u64()?)
+                .map_err(|_| "attachment data length is unsupported")?;
+            cursor.take(length)?;
+            cursor.take(4)?;
         }
         op::METADATA => {
             cursor.string()?;
@@ -884,6 +960,7 @@ pub struct Source<R> {
     start_offset: u64,
     offset: u64,
     stats: ProbeStats,
+    pass_records: u64,
     finished: bool,
 }
 
@@ -908,6 +985,7 @@ impl<R: Read + Seek> Source<R> {
             start_offset: offset,
             offset,
             stats: ProbeStats::default(),
+            pass_records: 0,
             finished: false,
         })
     }
@@ -948,6 +1026,7 @@ impl<R: Read + Seek> Source<R> {
                 LinearReadEvent::ReadRequest(requested) => self.read_more(requested)?,
                 LinearReadEvent::Record { data, opcode } => {
                     self.stats.records_read += 1;
+                    self.pass_records += 1;
                     self.stats.max_record_bytes = self.stats.max_record_bytes.max(data.len());
                     let record_number = self.stats.records_read - 1;
                     if !is_probe_record(opcode) {
@@ -1010,6 +1089,7 @@ impl<R: Read + Seek> Source<R> {
                 .with_record_length_limit(self.options.max_record_bytes),
         );
         self.offset = self.start_offset;
+        self.pass_records = 0;
         self.finished = false;
         Ok(())
     }
@@ -1098,6 +1178,7 @@ fn select_by_index<R: Read + Seek>(
                         publish_time,
                         ros2_pointcloud2_candidate: declarations[usize::from(channel_id)] & 4 != 0,
                         data,
+                        record: source.pass_records - 1,
                     });
                 }
                 matching_index = matching_index.saturating_add(1);
@@ -1180,6 +1261,7 @@ fn select_at_or_after<R: Read + Seek>(
                     publish_time,
                     ros2_pointcloud2_candidate: declarations[usize::from(channel_id)] & 4 != 0,
                     data,
+                    record: source.pass_records - 1,
                 });
             }
             _ => {}
@@ -1192,6 +1274,322 @@ fn point_frame_not_found(topic: &str, selector: FrameSelector) -> SelectionError
     SelectionError::PointFrameNotFound {
         topic: topic.to_owned(),
         selector,
+    }
+}
+
+/// Validate one encoded message selection and resolve its exact declarations.
+///
+/// The full source is consumed before a sink is opened. This validates container
+/// CRCs and proves that every unknown data-section record is either an
+/// application-private record that the official writer can preserve or an
+/// unsupported future standard record that must be refused explicitly.
+pub fn plan_passthrough<R: Read + Seek>(
+    source: &mut Source<R>,
+    topic: &str,
+    selector: FrameSelector,
+) -> Result<PassthroughPlan, PassthroughError> {
+    source.restart()?;
+    let mut profile = None;
+    let mut data_ended = false;
+    while let Some(record) = source.next_probe()? {
+        match record {
+            ProbeRecord::Header {
+                profile: current, ..
+            } if profile.is_none() => profile = Some(current),
+            ProbeRecord::DataEnd => data_ended = true,
+            ProbeRecord::Unknown { opcode, .. } if data_ended || opcode < 0x80 => {
+                return Err(PassthroughError::UnsupportedUnknown { opcode });
+            }
+            ProbeRecord::Attachment { .. } | ProbeRecord::Metadata { .. } if data_ended => {
+                return Err(PassthroughError::RecordAfterDataEnd);
+            }
+            _ => {}
+        }
+    }
+    let profile = profile.ok_or(PassthroughError::MissingHeader)?;
+
+    let selected = select_topic_message(source, topic, selector)?;
+    let channel_id = selected.channel_id;
+    let selected_record = selected.record;
+
+    source.restart()?;
+    let mut channel = None;
+    while let Some(record) = source.next_probe()? {
+        match record {
+            ProbeRecord::Channel {
+                id,
+                schema_id,
+                topic,
+                message_encoding,
+                metadata,
+            } if id == channel_id => {
+                insert_selected_declaration(
+                    &mut channel,
+                    ChannelDeclaration {
+                        schema_id,
+                        topic,
+                        message_encoding,
+                        metadata,
+                    },
+                    "Channel",
+                    id,
+                )?;
+            }
+            ProbeRecord::DataEnd => break,
+            _ => {}
+        }
+    }
+    let channel = channel.ok_or(PassthroughError::UndefinedChannel { channel_id })?;
+
+    let schema = if channel.schema_id == 0 {
+        None
+    } else {
+        source.restart()?;
+        let mut declaration = None;
+        while let Some(record) = source.next_probe()? {
+            match record {
+                ProbeRecord::Schema {
+                    id,
+                    name,
+                    encoding,
+                    data,
+                } if id == channel.schema_id => {
+                    insert_selected_declaration(
+                        &mut declaration,
+                        SchemaDeclaration {
+                            name,
+                            encoding,
+                            data,
+                        },
+                        "Schema",
+                        id,
+                    )?;
+                }
+                ProbeRecord::DataEnd => break,
+                _ => {}
+            }
+        }
+        Some((
+            channel.schema_id,
+            declaration.ok_or(PassthroughError::UndefinedSchema {
+                channel_id,
+                schema_id: channel.schema_id,
+            })?,
+        ))
+    };
+
+    Ok(PassthroughPlan {
+        profile,
+        schema,
+        channel_id,
+        channel,
+        selected_record,
+    })
+}
+
+fn insert_selected_declaration<T: PartialEq>(
+    slot: &mut Option<T>,
+    declaration: T,
+    kind: &'static str,
+    id: u16,
+) -> Result<(), PassthroughError> {
+    match slot {
+        Some(existing) if existing != &declaration => {
+            Err(PassthroughError::ConflictingDeclaration { kind, id })
+        }
+        Some(_) => Ok(()),
+        None => {
+            *slot = Some(declaration);
+            Ok(())
+        }
+    }
+}
+
+/// Replay a validated encoded selection through the official MCAP writer.
+///
+/// The selected message payload and both container times are copied without
+/// semantic decoding. Attachments, metadata, and private records keep their
+/// data-section order. Indexes, statistics, CRCs, and chunk layout are rebuilt.
+pub fn write_passthrough<R: Read + Seek>(
+    source: &mut Source<R>,
+    output: &mut dyn io::Write,
+    plan: &PassthroughPlan,
+    compression: PassthroughCompression,
+) -> io::Result<()> {
+    source.restart().map_err(io::Error::other)?;
+    let codec = match compression {
+        PassthroughCompression::None => None,
+        PassthroughCompression::Zstd => Some(Compression::Zstd),
+        PassthroughCompression::Lz4 => Some(Compression::Lz4),
+    };
+    let options = WriteOptions::new()
+        .profile(&plan.profile)
+        .library(PASSTHROUGH_LIBRARY)
+        .compression(codec)
+        .compression_level(3)
+        .compression_threads(0)
+        .chunk_size(Some(PASSTHROUGH_CHUNK_BYTES))
+        .emit_attachment_indexes(false)
+        .emit_metadata_indexes(false)
+        .disable_seeking(true);
+    let mut writer = Writer::with_options(NoSeek::new(output), options).map_err(writer_io_error)?;
+
+    if let Some((id, schema)) = &plan.schema {
+        writer
+            .add_schema_with_id(*id, &schema.name, &schema.encoding, &schema.data)
+            .map_err(writer_io_error)?;
+    }
+    writer
+        .add_channel_with_id(
+            plan.channel_id,
+            plan.channel.schema_id,
+            &plan.channel.topic,
+            &plan.channel.message_encoding,
+            &plan.channel.metadata,
+        )
+        .map_err(writer_io_error)?;
+
+    while let Some(record) = source.next_probe().map_err(io::Error::other)? {
+        match record {
+            ProbeRecord::Message {
+                channel_id,
+                sequence,
+                log_time,
+                publish_time,
+                data,
+            } if source.pass_records - 1 == plan.selected_record => writer
+                .write_to_known_channel(
+                    &MessageHeader {
+                        channel_id,
+                        sequence,
+                        log_time,
+                        publish_time,
+                    },
+                    &data,
+                )
+                .map_err(writer_io_error)?,
+            ProbeRecord::Attachment {
+                log_time,
+                create_time,
+                name,
+                media_type,
+                data,
+            } => {
+                writer
+                    .start_attachment(
+                        u64::try_from(data.len()).map_err(io::Error::other)?,
+                        AttachmentHeader {
+                            log_time,
+                            create_time,
+                            name,
+                            media_type,
+                        },
+                    )
+                    .map_err(writer_io_error)?;
+                writer
+                    .put_attachment_bytes(&data)
+                    .map_err(writer_io_error)?;
+                writer.finish_attachment().map_err(writer_io_error)?;
+            }
+            ProbeRecord::Metadata { name, metadata } => writer
+                .write_metadata(&Metadata { name, metadata })
+                .map_err(writer_io_error)?,
+            ProbeRecord::Unknown { opcode, data } if opcode >= 0x80 => writer
+                .write_private_record(opcode, &data, Default::default())
+                .map_err(writer_io_error)?,
+            ProbeRecord::DataEnd => break,
+            ProbeRecord::Header { .. }
+            | ProbeRecord::Schema { .. }
+            | ProbeRecord::Channel { .. }
+            | ProbeRecord::Message { .. }
+            | ProbeRecord::Unknown { .. } => {}
+        }
+    }
+    writer.finish().map_err(writer_io_error)?;
+    Ok(())
+}
+
+fn writer_io_error(error: McapError) -> io::Error {
+    match error {
+        McapError::Io(source) => source,
+        other => io::Error::other(other),
+    }
+}
+
+/// Failure to prove that a requested container rewrite is faithful.
+#[derive(Debug)]
+pub enum PassthroughError {
+    Probe(ProbeError),
+    Selection(SelectionError),
+    MissingHeader,
+    UndefinedChannel { channel_id: u16 },
+    UndefinedSchema { channel_id: u16, schema_id: u16 },
+    ConflictingDeclaration { kind: &'static str, id: u16 },
+    UnsupportedUnknown { opcode: u8 },
+    RecordAfterDataEnd,
+}
+
+impl PassthroughError {
+    pub const fn category(&self) -> ErrorCategory {
+        match self {
+            Self::Probe(error) => error.category(),
+            Self::Selection(error) => error.category(),
+            Self::UnsupportedUnknown { .. } => ErrorCategory::Unsupported,
+            Self::MissingHeader
+            | Self::UndefinedChannel { .. }
+            | Self::UndefinedSchema { .. }
+            | Self::ConflictingDeclaration { .. }
+            | Self::RecordAfterDataEnd => ErrorCategory::InvalidData,
+        }
+    }
+}
+
+impl fmt::Display for PassthroughError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Probe(error) => error.fmt(formatter),
+            Self::Selection(error) => error.fmt(formatter),
+            Self::MissingHeader => write!(formatter, "invalid MCAP: Header record is missing"),
+            Self::UndefinedChannel { channel_id } => write!(
+                formatter,
+                "invalid MCAP: selected message references undefined Channel {channel_id}"
+            ),
+            Self::UndefinedSchema {
+                channel_id,
+                schema_id,
+            } => write!(
+                formatter,
+                "invalid MCAP: selected Channel {channel_id} references undefined Schema {schema_id}"
+            ),
+            Self::ConflictingDeclaration { kind, id } => {
+                write!(
+                    formatter,
+                    "invalid MCAP: conflicting declarations for {kind} {id}"
+                )
+            }
+            Self::UnsupportedUnknown { opcode } => write!(
+                formatter,
+                "cannot faithfully preserve unknown reserved MCAP record opcode 0x{opcode:02x}"
+            ),
+            Self::RecordAfterDataEnd => write!(
+                formatter,
+                "invalid MCAP: preservable data record appears after DataEnd"
+            ),
+        }
+    }
+}
+
+impl Error for PassthroughError {}
+
+impl From<ProbeError> for PassthroughError {
+    fn from(error: ProbeError) -> Self {
+        Self::Probe(error)
+    }
+}
+
+impl From<SelectionError> for PassthroughError {
+    fn from(error: SelectionError) -> Self {
+        Self::Selection(error)
     }
 }
 
@@ -1223,6 +1621,17 @@ fn own_probe_record(record: Record<'_>) -> Option<ProbeRecord> {
             sequence: header.sequence,
             log_time: header.log_time,
             publish_time: header.publish_time,
+            data: Arc::from(data.as_ref()),
+        }),
+        Record::Attachment { header, data, .. } => Some(ProbeRecord::Attachment {
+            log_time: header.log_time,
+            create_time: header.create_time,
+            name: header.name,
+            media_type: header.media_type,
+            data: Arc::from(data.as_ref()),
+        }),
+        Record::Unknown { opcode, data } => Some(ProbeRecord::Unknown {
+            opcode,
             data: Arc::from(data.as_ref()),
         }),
         Record::DataEnd(_) => Some(ProbeRecord::DataEnd),
@@ -1563,6 +1972,43 @@ mod tests {
             error,
             ProbeError::RecordLayout {
                 opcode: super::op::HEADER,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn attachment_string_length_is_rejected_before_record_parser_allocation() {
+        let mut bytes = Vec::from(::mcap::MAGIC);
+        bytes.push(super::op::HEADER);
+        bytes.extend_from_slice(&8_u64.to_le_bytes());
+        bytes.extend_from_slice(&[0; 8]);
+        bytes.push(super::op::ATTACHMENT);
+        bytes.extend_from_slice(&20_u64.to_le_bytes());
+        bytes.extend_from_slice(&[0; 16]);
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        bytes.push(super::op::DATA_END);
+        bytes.extend_from_slice(&4_u64.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.push(super::op::FOOTER);
+        bytes.extend_from_slice(&20_u64.to_le_bytes());
+        bytes.extend_from_slice(&[0; 20]);
+        bytes.extend_from_slice(::mcap::MAGIC);
+
+        let result = std::panic::catch_unwind(|| {
+            first_probe_error(
+                bytes,
+                SourceOptions {
+                    read_chunk_bytes: 7,
+                    max_record_bytes: 1024 * 1024,
+                },
+            )
+        });
+        let error = result.expect("malformed Attachment must not panic");
+        assert!(matches!(
+            error,
+            ProbeError::RecordLayout {
+                opcode: super::op::ATTACHMENT,
                 ..
             }
         ));

@@ -23,6 +23,15 @@ pcx extract run.mcap \
 
 `--frame`はTopic選択後の0-based indexです。`--at 83.2s`はrecording開始からの指定時間以降で最初のPoint Frameを選びます。両方を同時には指定できません。
 
+## encoded messageをMCAPへcopy
+
+```bash
+pcx passthrough run.mcap --topic /lidar/points --frame 0 -o selected.mcap
+```
+
+このcontainer pathはPointCloud2をdecodeせず、encoded messageとrecording-level
+recordを保持します。
+
 cloud clientではなくshellで転送します。
 
 ```bash

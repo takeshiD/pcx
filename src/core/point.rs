@@ -12,7 +12,7 @@ use std::mem::size_of;
 use std::sync::Arc;
 
 /// A primitive representation used by a point field.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum PrimitiveType {
     I8,
     U8,
@@ -39,7 +39,7 @@ impl PrimitiveType {
 }
 
 /// A known meaning attached to a field without replacing its source name.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum PointFieldSemantic {
     X,
     Y,

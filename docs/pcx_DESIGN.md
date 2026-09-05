@@ -2,7 +2,7 @@
 
 Status: accepted foundation design
 
-Last updated: 2026-09-02
+Last updated: 2026-09-05
 
 Owner: tkcd
 
@@ -264,11 +264,11 @@ test. This catches package-content and build failures before `cargo publish`.
 
 After approval through a protected `release` environment:
 
-- publish `pcx-cli` to crates.io;
-- push both Nix closures to public Cachix cache `pcx`;
+- publish existing `pcx-cli` packages to crates.io through Trusted Publishing OIDC;
+- push both Nix closures to public Cachix cache `takeshid`;
 - create a GitHub release with Linux archives and SHA-256 checksums.
 
-Environment secrets: `CARGO_REGISTRY_TOKEN` and `CACHIX_AUTH_TOKEN`.
+The only release environment secret is `CACHIX_AUTH_TOKEN`. The protected publish job alone receives `id-token: write` and exchanges GitHub's OIDC identity for a short-lived crates.io token. A maintainer manually publishes the first `pcx-cli` version after equivalent gates, then binds Trusted Publishing to this repository, `release.yml`, and the `release` environment.
 
 ## 17. Test design
 

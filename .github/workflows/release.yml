@@ -60,6 +60,10 @@ jobs:
       - run: cargo check --all-targets --all-features --locked
       - run: cargo test --all-features --locked
       - uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
+      - uses: cachix/cachix-action@97e5ff84d02b3b4f9936339f767e17f03c9252ed # v16
+        with:
+          name: takeshid
+          skipPush: true
       - run: nix flake check --print-build-logs
 
   docs:
@@ -139,7 +143,7 @@ jobs:
       - uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
       - uses: cachix/cachix-action@97e5ff84d02b3b4f9936339f767e17f03c9252ed # v16
         with:
-          name: pcx
+          name: takeshid
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - run: nix build .#pcx --print-build-logs
 
@@ -150,6 +154,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -157,10 +162,13 @@ jobs:
           pattern: pcx-*
           path: dist
           merge-multiple: true
+      - name: Authenticate to crates.io
+        id: crates_io_auth
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
       - name: Publish pcx-cli
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --locked --token "${CARGO_REGISTRY_TOKEN}"
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates_io_auth.outputs.token }}
+        run: cargo publish --locked
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

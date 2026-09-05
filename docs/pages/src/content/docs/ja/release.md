@@ -7,4 +7,6 @@ description: 厳密なタグ、検証ゲート、公開先。
 
 公開前に formatter、Clippy、typecheck、test、ドキュメント build、Nix check、`cargo package`、展開後 package の build、install smoke test を再実行します。
 
-保護された GitHub `release` environment で承認後、`pcx-cli` を crates.io に公開し、x86_64/aarch64 Linux の closure を公開 Cachix `pcx` に push し、tarball と SHA-256 を GitHub Release に追加します。必要な secret は `CARGO_REGISTRY_TOKEN` と `CACHIX_AUTH_TOKEN` です。
+保護された GitHub `release` environment で承認後、既存の `pcx-cli` package を crates.io Trusted Publishing で公開し、x86_64/aarch64 Linux の closure を公開 Cachix `takeshid` に push し、tarball と SHA-256 を GitHub Release に追加します。cache は `https://takeshid.cachix.org`、公開鍵は `takeshid.cachix.org-1:2GsGTUZ3djVzbGzXgeia+SRV1ZJYOXySHyNfBPsEjRA=` です。
+
+environment secret は `CACHIX_AUTH_TOKEN` だけです。保護された publish job だけが GitHub OIDC を短時間有効な crates.io token と交換し、長期 registry token は保存しません。最初の crate version は同等の gate を通過後に maintainer が手動公開し、その後の自動 release 用に Trusted Publisher を設定します。

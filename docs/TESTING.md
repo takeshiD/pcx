@@ -150,6 +150,51 @@ Pull requests block on deterministic managed-memory behavior:
 
 RSS, throughput, allocations, points/s, bytes/s, and output size are measured in scheduled benchmarks. Runner noise makes them reports rather than initial merge gates.
 
+## Performance baselines
+
+`cargo bench --bench performance` uses Criterion.rs and one deterministic,
+repository-generated fixture: an uncompressed MCAP containing a 65,536-point
+ROS 2 `PointCloud2` message. The generator uses no downloaded data, network,
+credentials, real sensor data, or device identifiers. It writes MCAP records
+incrementally to a temporary file, and the probe benchmark opens that file
+through the production bounded `Read + Seek` adapter rather than retaining a
+whole recording in memory.
+
+The cases isolate these costs:
+
+| Group | Measured boundary | Throughput unit |
+| --- | --- | --- |
+| `probe/synthetic_mcap` | bounded MCAP inspection, without PointCloud2 decoding | Source bytes |
+| `decode/pointcloud2_cdr` | strict CDR and PointCloud2 validation into `PointView` | input points |
+| `operator/axis_aligned_crop` | planned frame-local crop, including output columns | input points |
+| `encode/pcd_binary` | binary PCD writing to a non-buffering byte counter | output points |
+| `encode/pcd_ascii` | ASCII PCD formatting to a non-buffering byte counter | output points |
+
+The scheduled workflow runs these cases natively on `x86_64-linux` and
+`aarch64-linux` and uploads each architecture's Criterion estimates plus a
+`metrics.json` report. Compare like architecture, toolchain, fixture schema,
+and benchmark name; cross-architecture ratios are descriptive, not gates.
+
+Wall-clock changes of 20% or more in Criterion's mean estimate are the initial
+investigation threshold. They are deliberately non-blocking because hosted
+runner timing has not stabilized. Do not turn timing into a required check
+until several scheduled runs establish per-architecture distributions.
+
+Pull requests do gate the deterministic parts in `performance_contract`:
+
+| Metric | Baseline budget | Regression threshold |
+| --- | ---: | --- |
+| binary PCD output | 262,343 bytes | 0 bytes above budget |
+| ASCII PCD output | 334,790 bytes | 0 bytes above budget |
+| declared peak managed memory | 3,383,779 bytes | 0 bytes above budget |
+
+The output budgets include the deterministic PCD header and the 16,384 points
+retained by the fixed crop. The memory number is the Planner's declared peak,
+not RSS: it includes retained message bytes, operator materialization/output,
+scratch, and conservative overhead. Any intentional fixture, representation,
+or planner change must update the documented baseline and its reviewed test in
+the same pull request; CI never rewrites a baseline automatically.
+
 ## Fuzzing
 
 `cargo-fuzz` runs on a schedule and manually, targeting MCAP record boundaries, strict CDR, PointCloud2 layouts, and PCD headers. A crash is minimized and added to the regression suite before the fix is merged. Scheduled fuzzing is not itself a release gate.

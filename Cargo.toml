@@ -17,6 +17,7 @@ include = [
     "/examples/**",
     "/generated/**",
     "/scripts/**",
+    "/benches/**",
     "/src/**",
     "/tests/**",
 ]
@@ -44,4 +45,9 @@ zstd = { version = "0.13", default-features = false }
 [dev-dependencies]
 clap_complete = "=4.5.58"
 clap_mangen = "=0.2.29"
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 proptest = "1.9"
+
+[[bench]]
+name = "performance"
+harness = false

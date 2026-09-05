@@ -3,9 +3,12 @@ title: Install
 description: 現在利用できるsource／Nix install方法。
 ---
 
-:::caution[Foundation stage]
-最初のcrates.io releaseはまだ行われていません。`cargo install pcx-cli`は確定した将来のcommandであり、現在利用可能という意味ではありません。
-:::
+## crates.ioから
+
+```bash
+cargo install pcx-cli
+pcx --version
+```
 
 ## Sourceから
 

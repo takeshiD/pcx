@@ -12,11 +12,34 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::{
     core::{
-        Error, ErrorCategory, ExecutionPlan, ExecutionReport, JobSpec, ManagedMemoryBound,
-        SourceSpec,
+        Cancellation, Error, ErrorCategory, ExecutionPlan, ExecutionReport, JobSpec,
+        ManagedMemoryBound, Result as CoreResult, SourceSpec,
     },
     mcap::{self, DiscoveredChannel, ProbeError, SourceOptions, TopicDiscovery},
 };
+
+struct InterruptHandler {
+    cancellation: Cancellation,
+    signal_id: signal_hook::SigId,
+}
+
+impl InterruptHandler {
+    fn install() -> std::io::Result<Self> {
+        let cancellation = Cancellation::default();
+        let signal_id =
+            signal_hook::flag::register(signal_hook::consts::SIGINT, cancellation.signal_flag())?;
+        Ok(Self {
+            cancellation,
+            signal_id,
+        })
+    }
+}
+
+impl Drop for InterruptHandler {
+    fn drop(&mut self) {
+        signal_hook::low_level::unregister(self.signal_id);
+    }
+}
 
 /// Process statuses assigned to structured core failure categories.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -58,6 +81,33 @@ impl ExitStatus {
     pub const fn code(self) -> u8 {
         self as u8
     }
+}
+
+/// Run synchronous product work with SIGINT mapped to cancellation and exit 130.
+///
+/// Product commands keep their format-specific work outside this process seam;
+/// this function only owns signal setup, typed exit mapping, and stderr diagnostics.
+pub fn run_interruptibly<F>(operation: F) -> ExitStatus
+where
+    F: FnOnce(Cancellation) -> CoreResult<()>,
+{
+    let handler = match InterruptHandler::install() {
+        Ok(handler) => handler,
+        Err(error) => {
+            eprintln!("pcx: could not install interrupt handler: {error}");
+            return ExitStatus::Internal;
+        }
+    };
+
+    match operation(handler.cancellation.clone()) {
+        Ok(()) => ExitStatus::Success,
+        Err(error) => report_error(&error),
+    }
+}
+
+fn report_error(error: &Error) -> ExitStatus {
+    eprintln!("pcx: {error}");
+    ExitStatus::from(error.category())
 }
 
 /// Inspect and reduce point-cloud recordings where the data lives.

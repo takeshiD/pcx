@@ -12,7 +12,9 @@ description: Accepted format boundaries and fidelity rules.
 | PCD | ASCII and little-endian binary | Binary and ASCII | Reader adapter available; no input CLI command yet |
 | PLY 1.0 | Scalar vertices in ASCII and both binary byte orders | ASCII and both binary byte orders | Adapter available; no CLI command yet |
 
-LAS/LAZ and terminal rendering are later work. AWS/S3 transports and cloud credentials are not product features.
+LAS/LAZ and image-protocol terminal rendering are later work. The CPU rasterizer
+and Unicode terminal backend are available internally. AWS/S3 transports and
+cloud credentials are not product features.
 
 ## Faithful PLY subset
 

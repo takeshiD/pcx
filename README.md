@@ -29,7 +29,8 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 | Encoded one-message MCAP passthrough               | Available             |
 | Crop, field selection, frame-local voxel reduction | Planned               |
 | PLY scalar-vertex adapter (CLI integration later)  | Available internally  |
-| LAS/LAZ and terminal rendering                     | Planned               |
+| CPU projection and Unicode terminal renderer       | Available internally  |
+| LAS/LAZ and image-protocol terminal rendering      | Planned               |
 | AWS/S3 upload and cloud credentials                | Out of scope          |
 | macOS and Windows support                          | Undecided future work |
 

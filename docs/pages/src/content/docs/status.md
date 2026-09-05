@@ -31,7 +31,8 @@ description: What pcx implements today and what comes next.
 
 The scalar-vertex PLY reader/writer adapter is implemented behind the common
 schema; a user-facing command is not yet exposed.
-- **Terminal rendering:** deterministic CPU rasterizer, Unicode and Kitty backends; Sixel follows.
+- **Terminal rendering:** deterministic CPU rasterizer and Unicode backend are
+  available internally; capability selection, Kitty, and Sixel follow.
 - **Hardening:** longer fuzz runs, performance baselines, musl investigation and resource tuning.
 
 ## Explicit non-goals

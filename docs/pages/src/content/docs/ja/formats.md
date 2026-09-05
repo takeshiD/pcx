@@ -12,7 +12,7 @@ description: 採用するフォーマット境界と忠実性の規則。
 | PCD | ASCII と little-endian binary | binary / ASCII | reader adapter は利用可能、input CLI command は未実装 |
 | PLY 1.0 | ASCII と両方の binary byte order の scalar vertex | ASCII と両方の binary byte order | adapter は利用可能、CLI command は未実装 |
 
-LAS/LAZ、ターミナル描画は将来の対象です。AWS/S3 転送やクラウド認証情報は製品機能に含めません。
+LAS/LAZ と画像プロトコルのターミナル描画は将来の対象です。CPU rasterizer と Unicode backend は内部実装済みです。AWS/S3 転送やクラウド認証情報は製品機能に含めません。
 
 ## 忠実な PLY subset
 

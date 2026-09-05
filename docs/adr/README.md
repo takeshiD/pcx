@@ -12,5 +12,6 @@ ADRs record hard-to-reverse choices with non-obvious trade-offs.
 8. [Version JSON and define frame selection](./0008-version-json-and-define-frame-selection.md)
 9. [Compose with transfer tools instead of cloud clients](./0009-compose-with-transfer-tools-instead-of-cloud-clients.md)
 10. [Publish one Rust package with deep modules](./0010-publish-one-rust-package-with-deep-modules.md)
-11. [Gate tagged releases before irreversible publication](./0011-gate-tagged-releases-before-irreversible-publication.md)
+11. [Gate tagged releases before irreversible publication](./0011-gate-tagged-releases-before-irreversible-publication.md) — superseded
 12. [Wrap the official MCAP reader and decode PointCloud2 strictly](./0012-wrap-the-official-mcap-reader-and-decode-pointcloud2-strictly.md)
+13. [Publish through shared Cachix and crates.io OIDC](./0013-publish-through-shared-cachix-and-crates-io-oidc.md)

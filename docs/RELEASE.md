@@ -6,9 +6,10 @@ Stable releases use `vX.Y.Z`; pre-releases use `vX.Y.Z-alpha.N`. No other tag st
 
 - The `pcx-cli` package version exactly matches the tag without its leading `v`.
 - The tagged commit is on `main` and has passed CI.
-- The public Cachix cache is named `pcx`.
+- The public Cachix cache is `takeshid` at `https://takeshid.cachix.org`, with public key `takeshid.cachix.org-1:2GsGTUZ3djVzbGzXgeia+SRV1ZJYOXySHyNfBPsEjRA=`.
 - GitHub's protected `release` environment requires manual approval.
-- `CARGO_REGISTRY_TOKEN` and `CACHIX_AUTH_TOKEN` are configured only for that environment.
+- `CACHIX_AUTH_TOKEN` is configured only for that environment and can write to `takeshid`.
+- For automated releases, crates.io Trusted Publishing identifies repository `takeshiD/pcx`, workflow `release.yml`, and environment `release`; GitHub stores no crates.io token.
 
 ## Automated gate
 
@@ -23,12 +24,19 @@ tag syntax and Cargo version
   -> Nix flake check and both packages
   -> Starlight build
   -> protected environment approval
-  -> Cachix push
-  -> cargo publish pcx-cli
+  -> push both closures to takeshid Cachix
+  -> exchange GitHub OIDC for a short-lived crates.io token
+  -> cargo publish pcx-cli with the temporary token
   -> GitHub Release and checksums
 ```
 
-`cargo publish --no-verify` and `--allow-dirty` are forbidden. crates.io publication is permanent, so it follows every recoverable build/cache operation.
+`id-token: write` is scoped to the protected publish job. Pull-request and validation jobs use `takeshid` read-only and receive no publishing credential. `cargo publish --no-verify` and `--allow-dirty` are forbidden. crates.io publication is permanent, so it follows every recoverable build/cache operation.
+
+## First crates.io publication
+
+Trusted Publishing can be configured only after `pcx-cli` exists on crates.io. A maintainer therefore publishes the first version manually from the exact clean `main` commit after all equivalent CI, package, Nix, documentation, and approval gates pass. Do not create an automated release tag for that bootstrap version.
+
+After the first publication, configure the crate's GitHub Trusted Publisher with owner `takeshiD`, repository `pcx`, workflow filename `release.yml`, and environment `release`. Every later release uses a new manifest version and the automated tag workflow; do not add `CARGO_REGISTRY_TOKEN` to GitHub.
 
 ## Artifacts
 
@@ -40,4 +48,4 @@ Each archive contains the `pcx` executable, `LICENSE`, and a minimal README. Alp
 
 ## Recovery
 
-If Cachix succeeds but crates.io fails, fix only the release configuration and rerun the same tag workflow after verifying the registry does not contain the version. Never move a published tag to different source. A crates.io version cannot be overwritten; a broken published version is yanked and replaced with a new patch/pre-release version.
+If Cachix succeeds but the OIDC exchange or crates.io publication fails, fix only the Trusted Publisher or release configuration and rerun the same tag workflow after verifying the registry does not contain the version. Never move a published tag to different source. A crates.io version cannot be overwritten; a broken published version is yanked and replaced with a new patch/pre-release version.

@@ -57,11 +57,14 @@ Sources: [ADR-0002](../../docs/adr/0002-reject-unplannable-resource-and-data-los
 
 ## Release safety
 
-Source: [ADR-0011](../../docs/adr/0011-gate-tagged-releases-before-irreversible-publication.md).
+Source: [ADR-0013](../../docs/adr/0013-publish-through-shared-cachix-and-crates-io-oidc.md).
 
 - Trigger release validation only for `vX.Y.Z` and `vX.Y.Z-alpha.N` tags, and require the tag version to equal the `pcx-cli` manifest version.
 - Before irreversible publication, validate both native Linux architectures, packaged source, the installed packaged binary, the Nix flake, and documentation.
 - Gate Cachix, crates.io, and GitHub Release publication behind a protected release environment.
+- Publish Nix closures to the public `takeshid` Cachix cache; keep its write token scoped to the protected release environment and use the cache read-only in pull-request jobs.
+- Publish existing crates.io packages through Trusted Publishing with a short-lived token. Grant `id-token: write` only to the protected publish job and keep long-lived crates.io tokens out of GitHub Actions.
+- Bootstrap the first `pcx-cli` version manually after equivalent validation and maintainer approval, then bind crates.io Trusted Publishing to `takeshiD/pcx`, `release.yml`, and the `release` environment before any automated release tag.
 - Publish x86_64 and aarch64 archives with checksums.
 - Give workflows minimal permissions and keep release secrets unavailable to pull-request jobs.
 

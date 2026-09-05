@@ -65,6 +65,55 @@ fn write_recording(path: &Path, messages: &[(u64, &[u8])]) {
     writer.finish().expect("writer should finish");
 }
 
+fn write_topics_recording(path: &Path) {
+    let file = File::create(path).expect("fixture should be created");
+    let mut writer = Writer::with_options(
+        file,
+        WriteOptions::new()
+            .profile("ros2")
+            .library("pcx-cli-test")
+            .compression(None),
+    )
+    .expect("writer should start");
+    let point_schema = writer
+        .add_schema("sensor_msgs/msg/PointCloud2", "ros2msg", b"point schema")
+        .expect("schema should be added");
+    let image_schema = writer
+        .add_schema("sensor_msgs/msg/Image", "ros2msg", b"image schema")
+        .expect("schema should be added");
+    let later = writer
+        .add_channel(point_schema, "/z", "cdr", &BTreeMap::new())
+        .expect("channel should be added");
+    let duplicate_candidate = writer
+        .add_channel(point_schema, "/points", "cdr", &BTreeMap::new())
+        .expect("channel should be added");
+    let duplicate_other = writer
+        .add_channel(image_schema, "/points", "cdr", &BTreeMap::new())
+        .expect("channel should be added");
+    for (sequence, channel_id) in [
+        duplicate_other,
+        duplicate_candidate,
+        duplicate_candidate,
+        later,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        writer
+            .write_to_known_channel(
+                &MessageHeader {
+                    channel_id,
+                    sequence: sequence as u32,
+                    log_time: sequence as u64,
+                    publish_time: sequence as u64,
+                },
+                b"not decoded by discovery",
+            )
+            .expect("message should be written");
+    }
+    writer.finish().expect("writer should finish");
+}
+
 #[test]
 fn help_identifies_the_product_and_its_status() {
     let output = Command::new(env!("CARGO_BIN_EXE_pcx"))
@@ -76,6 +125,7 @@ fn help_identifies_the_product_and_its_status() {
     let stdout = String::from_utf8(output.stdout).expect("help should be UTF-8");
     assert!(stdout.contains("Inspect and reduce point-cloud recordings"));
     assert!(stdout.contains("info"));
+    assert!(stdout.contains("topics"));
     assert!(output.stderr.is_empty());
 }
 
@@ -105,6 +155,22 @@ fn info_help_labels_input_and_every_supported_option() {
     assert!(output.stderr.is_empty());
     let stdout = String::from_utf8(output.stdout).expect("help should be UTF-8");
     assert!(stdout.contains("Usage: pcx info [OPTIONS] <INPUT.mcap>"));
+    assert!(stdout.contains("MCAP Source to inspect"));
+    assert!(stdout.contains("--json"));
+    assert!(stdout.contains("--help"));
+}
+
+#[test]
+fn topics_help_labels_input_and_every_supported_option() {
+    let output = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .args(["topics", "--help"])
+        .output()
+        .expect("pcx should start");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("help should be UTF-8");
+    assert!(stdout.contains("Usage: pcx topics [OPTIONS] <INPUT.mcap>"));
     assert!(stdout.contains("MCAP Source to inspect"));
     assert!(stdout.contains("--json"));
     assert!(stdout.contains("--help"));
@@ -227,4 +293,97 @@ fn malformed_and_zero_byte_sources_fail_without_stdout_data() {
         let stderr = String::from_utf8(output.stderr).expect("diagnostic should be UTF-8");
         assert!(stderr.starts_with("pcx: error: invalid MCAP"));
     }
+}
+
+#[test]
+fn topics_json_is_versioned_deterministic_and_preserves_duplicate_names() {
+    let source = TempSource::new("topics-json");
+    write_topics_recording(source.path());
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_pcx"))
+            .args([
+                "topics",
+                source.path().to_str().expect("UTF-8 path"),
+                "--json",
+            ])
+            .output()
+            .expect("pcx should start")
+    };
+
+    let first = run();
+    let second = run();
+
+    assert!(first.status.success());
+    assert!(first.stderr.is_empty());
+    assert_eq!(first.stdout, second.stdout);
+    assert!(second.stderr.is_empty());
+    let report: serde_json::Value =
+        serde_json::from_slice(&first.stdout).expect("stdout should be JSON");
+    assert_eq!(report["schema_version"], 1);
+    assert_eq!(report["command"], "topics");
+    let channels = report["data"]["channels"]
+        .as_array()
+        .expect("channels should be an array");
+    assert_eq!(channels.len(), 3);
+    assert_eq!(channels[0]["topic"], "/points");
+    assert_eq!(channels[1]["topic"], "/points");
+    assert_eq!(channels[2]["topic"], "/z");
+    assert_eq!(channels[0]["message_count"], 2);
+    assert_eq!(channels[1]["message_count"], 1);
+    assert_eq!(channels[0]["message_encoding"], "cdr");
+    assert_eq!(channels[0]["schema"]["name"], "sensor_msgs/msg/PointCloud2");
+    assert_eq!(channels[0]["schema"]["encoding"], "ros2msg");
+    assert_eq!(channels[0]["ros2_pointcloud2_candidate"], true);
+    assert_eq!(channels[1]["ros2_pointcloud2_candidate"], false);
+}
+
+#[test]
+fn topics_human_output_uses_topic_and_mcap_channel_terms_without_decode_claims() {
+    let source = TempSource::new("topics-human");
+    write_topics_recording(source.path());
+    let output = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .args(["topics", source.path().to_str().expect("UTF-8 path")])
+        .output()
+        .expect("pcx should start");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("output should be UTF-8");
+    assert!(stdout.starts_with("Topic: /points\n  MCAP Channel ID:"));
+    assert_eq!(stdout.matches("Topic: /points").count(), 2);
+    assert!(stdout.contains("ROS 2 PointCloud2 candidate: yes"));
+    assert!(stdout.contains("message payloads were not decoded"));
+}
+
+#[test]
+fn topics_reports_an_empty_container_only_on_stdout() {
+    let source = TempSource::new("topics-empty");
+    write_recording(source.path(), &[]);
+    let output = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .args(["topics", source.path().to_str().expect("UTF-8 path")])
+        .output()
+        .expect("pcx should start");
+
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"No Topics found.\n");
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn topics_rejects_malformed_input_only_on_stderr() {
+    let source = TempSource::new("topics-malformed");
+    fs::write(source.path(), b"not an MCAP").expect("fixture should be written");
+    let output = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .args([
+            "topics",
+            source.path().to_str().expect("UTF-8 path"),
+            "--json",
+        ])
+        .output()
+        .expect("pcx should start");
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("diagnostic should be UTF-8");
+    assert!(stderr.starts_with("pcx: error: invalid MCAP"));
 }

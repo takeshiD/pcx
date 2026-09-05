@@ -18,7 +18,201 @@ use ::mcap::{
     sans_io::linear_reader::{LinearReadEvent, LinearReader, LinearReaderOptions},
 };
 
+use crate::core::ErrorCategory;
+
 const RECORD_ENVELOPE_BYTES: usize = 9;
+const ROS2_POINTCLOUD2_SCHEMA: &str = "sensor_msgs/msg/PointCloud2";
+const ROS2_SCHEMA_ENCODING: &str = "ros2msg";
+const ROS2_MESSAGE_ENCODING: &str = "cdr";
+
+/// A Schema associated with a discovered MCAP Channel.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DiscoveredSchema {
+    pub id: u16,
+    pub name: String,
+    pub encoding: String,
+}
+
+/// One discovered MCAP Channel and the Topic it represents to users.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DiscoveredChannel {
+    pub channel_id: u16,
+    pub topic: String,
+    pub message_encoding: String,
+    pub message_count: u64,
+    pub schema: Option<DiscoveredSchema>,
+    /// Whether declarations identify a ROS 2 PointCloud2 candidate.
+    ///
+    /// Discovery does not decode message payloads, so this is not a claim that
+    /// the Channel's messages are valid or decodable PointCloud2 values.
+    pub ros2_pointcloud2_candidate: bool,
+}
+
+/// Deterministically ordered Topic discovery results.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct TopicDiscovery {
+    channels: Vec<DiscoveredChannel>,
+}
+
+impl TopicDiscovery {
+    pub fn channels(&self) -> &[DiscoveredChannel] {
+        &self.channels
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SchemaDeclaration {
+    name: String,
+    encoding: String,
+    data: Arc<[u8]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ChannelDeclaration {
+    schema_id: u16,
+    topic: String,
+    message_encoding: String,
+    metadata: BTreeMap<String, String>,
+}
+
+/// Discover MCAP Channels, their Schemas, and message counts without decoding
+/// message payloads.
+pub fn discover_topics<R: Read + Seek>(
+    input: R,
+    options: SourceOptions,
+) -> Result<TopicDiscovery, ProbeError> {
+    let mut source = Source::new(input, options)?;
+    let mut schemas = BTreeMap::<u16, SchemaDeclaration>::new();
+    let mut channels = BTreeMap::<u16, ChannelDeclaration>::new();
+    let mut message_counts = BTreeMap::<u16, u64>::new();
+
+    while let Some(record) = source.next_probe()? {
+        match record {
+            ProbeRecord::Schema {
+                id,
+                name,
+                encoding,
+                data,
+            } => insert_schema(
+                &mut schemas,
+                id,
+                SchemaDeclaration {
+                    name,
+                    encoding,
+                    data,
+                },
+            )?,
+            ProbeRecord::Channel {
+                id,
+                schema_id,
+                topic,
+                message_encoding,
+                metadata,
+            } => insert_channel(
+                &mut channels,
+                id,
+                ChannelDeclaration {
+                    schema_id,
+                    topic,
+                    message_encoding,
+                    metadata,
+                },
+            )?,
+            ProbeRecord::Message { channel_id, .. } => {
+                let count = message_counts.entry(channel_id).or_default();
+                *count = count.checked_add(1).ok_or_else(|| ProbeError::Discovery {
+                    message: format!("message count overflow for MCAP Channel {channel_id}"),
+                })?;
+            }
+            ProbeRecord::Header { .. } | ProbeRecord::Metadata { .. } | ProbeRecord::DataEnd => {}
+        }
+    }
+
+    for channel_id in message_counts.keys() {
+        if !channels.contains_key(channel_id) {
+            return Err(ProbeError::Discovery {
+                message: format!("message references undefined MCAP Channel {channel_id}"),
+            });
+        }
+    }
+
+    let mut discovered = Vec::with_capacity(channels.len());
+    for (channel_id, channel) in channels {
+        let schema = match channel.schema_id {
+            0 => None,
+            schema_id => {
+                let declaration = schemas
+                    .get(&schema_id)
+                    .ok_or_else(|| ProbeError::Discovery {
+                        message: format!(
+                            "MCAP Channel {channel_id} references undefined Schema {schema_id}"
+                        ),
+                    })?;
+                Some(DiscoveredSchema {
+                    id: schema_id,
+                    name: declaration.name.clone(),
+                    encoding: declaration.encoding.clone(),
+                })
+            }
+        };
+        let ros2_pointcloud2_candidate = schema.as_ref().is_some_and(|schema| {
+            schema.name == ROS2_POINTCLOUD2_SCHEMA
+                && schema.encoding == ROS2_SCHEMA_ENCODING
+                && channel.message_encoding == ROS2_MESSAGE_ENCODING
+        });
+        discovered.push(DiscoveredChannel {
+            channel_id,
+            topic: channel.topic,
+            message_encoding: channel.message_encoding,
+            message_count: message_counts.get(&channel_id).copied().unwrap_or(0),
+            schema,
+            ros2_pointcloud2_candidate,
+        });
+    }
+    discovered.sort_by(|left, right| {
+        left.topic
+            .cmp(&right.topic)
+            .then(left.channel_id.cmp(&right.channel_id))
+    });
+
+    Ok(TopicDiscovery {
+        channels: discovered,
+    })
+}
+
+fn insert_schema(
+    schemas: &mut BTreeMap<u16, SchemaDeclaration>,
+    id: u16,
+    declaration: SchemaDeclaration,
+) -> Result<(), ProbeError> {
+    match schemas.get(&id) {
+        Some(existing) if existing != &declaration => Err(ProbeError::Discovery {
+            message: format!("conflicting declarations for MCAP Schema {id}"),
+        }),
+        Some(_) => Ok(()),
+        None => {
+            schemas.insert(id, declaration);
+            Ok(())
+        }
+    }
+}
+
+fn insert_channel(
+    channels: &mut BTreeMap<u16, ChannelDeclaration>,
+    id: u16,
+    declaration: ChannelDeclaration,
+) -> Result<(), ProbeError> {
+    match channels.get(&id) {
+        Some(existing) if existing != &declaration => Err(ProbeError::Discovery {
+            message: format!("conflicting declarations for MCAP Channel {id}"),
+        }),
+        Some(_) => Ok(()),
+        None => {
+            channels.insert(id, declaration);
+            Ok(())
+        }
+    }
+}
 
 /// Limits applied before bytes are admitted to the MCAP reader.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,6 +482,9 @@ pub enum ProbeError {
         opcode: u8,
         source: McapError,
     },
+    Discovery {
+        message: String,
+    },
 }
 
 impl fmt::Display for ProbeError {
@@ -319,6 +516,7 @@ impl fmt::Display for ProbeError {
                 formatter,
                 "invalid MCAP record {record} (opcode 0x{opcode:02x}) near byte offset {offset}: {source}"
             ),
+            Self::Discovery { message } => write!(formatter, "invalid MCAP: {message}"),
         }
     }
 }
@@ -328,7 +526,20 @@ impl Error for ProbeError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Reader { source, .. } | Self::Parse { source, .. } => Some(source),
-            Self::InvalidOptions(_) => None,
+            Self::InvalidOptions(_) | Self::Discovery { .. } => None,
+        }
+    }
+}
+
+impl ProbeError {
+    /// Map adapter failures to the format-independent CLI error taxonomy.
+    pub const fn category(&self) -> ErrorCategory {
+        match self {
+            Self::InvalidOptions(_) => ErrorCategory::Internal,
+            Self::Io { .. } => ErrorCategory::Io,
+            Self::Reader { .. } | Self::Parse { .. } | Self::Discovery { .. } => {
+                ErrorCategory::InvalidData
+            }
         }
     }
 }
@@ -478,6 +689,7 @@ mod tests {
     use std::{
         collections::BTreeMap,
         io::{Cursor, Read, Seek, SeekFrom},
+        sync::Arc,
     };
 
     use ::mcap::{
@@ -486,7 +698,10 @@ mod tests {
         write::{WriteOptions, Writer},
     };
 
-    use super::{Info, ProbeError, ProbeRecord, Source, SourceOptions, inspect};
+    use super::{
+        Info, ProbeError, ProbeRecord, SchemaDeclaration, Source, SourceOptions, discover_topics,
+        insert_schema, inspect,
+    };
 
     fn recording(compression: Option<Compression>, messages: &[&[u8]]) -> Vec<u8> {
         recording_with_summary(compression, messages, true)
@@ -557,6 +772,51 @@ mod tests {
             records.push(record);
         }
         records
+    }
+
+    fn duplicate_topic_recording() -> Vec<u8> {
+        let cursor = Cursor::new(Vec::new());
+        let mut writer = Writer::with_options(
+            cursor,
+            WriteOptions::new()
+                .profile("ros2")
+                .library("pcx-test")
+                .compression(None),
+        )
+        .expect("writer should start");
+        let point_schema_a = writer
+            .add_schema("sensor_msgs/msg/PointCloud2", "ros2msg", b"schema-a")
+            .expect("schema should be added");
+        let point_schema_b = writer
+            .add_schema("sensor_msgs/msg/PointCloud2", "ros2msg", b"schema-b")
+            .expect("schema should be added");
+        let other_schema = writer
+            .add_schema("sensor_msgs/msg/Image", "ros2msg", b"schema-c")
+            .expect("schema should be added");
+        let later = writer
+            .add_channel(point_schema_a, "/z", "cdr", &BTreeMap::new())
+            .expect("channel should be added");
+        let duplicate_a = writer
+            .add_channel(point_schema_b, "/points", "cdr", &BTreeMap::new())
+            .expect("channel should be added");
+        let duplicate_b = writer
+            .add_channel(other_schema, "/points", "cdr", &BTreeMap::new())
+            .expect("channel should be added");
+        for channel_id in [duplicate_b, duplicate_a, duplicate_a, later] {
+            writer
+                .write_to_known_channel(
+                    &MessageHeader {
+                        channel_id,
+                        sequence: 0,
+                        log_time: 0,
+                        publish_time: 0,
+                    },
+                    b"payload",
+                )
+                .expect("message should be written");
+        }
+        writer.finish().expect("writer should finish");
+        writer.into_inner().into_inner()
     }
 
     #[test]
@@ -814,5 +1074,90 @@ mod tests {
         assert!(stats.max_record_bytes <= 1024);
         assert_eq!(stats.max_retained_bytes, 40);
         assert!(stats.max_retained_bytes <= 1024);
+    }
+
+    #[test]
+    fn discovers_duplicate_topic_and_schema_names_as_distinct_channels() {
+        let discovery = discover_topics(
+            Cursor::new(duplicate_topic_recording()),
+            SourceOptions::default(),
+        )
+        .expect("recording should be discovered");
+
+        let channels = discovery.channels();
+        assert_eq!(channels.len(), 3);
+        assert_eq!(channels[0].topic, "/points");
+        assert_eq!(channels[1].topic, "/points");
+        assert!(channels[0].channel_id < channels[1].channel_id);
+        assert_eq!(channels[0].message_count, 2);
+        assert_eq!(channels[1].message_count, 1);
+        assert!(channels[0].ros2_pointcloud2_candidate);
+        assert!(!channels[1].ros2_pointcloud2_candidate);
+        assert_eq!(channels[2].topic, "/z");
+        assert_eq!(channels[2].message_count, 1);
+    }
+
+    #[test]
+    fn discovers_an_empty_container_without_inventing_topics() {
+        let cursor = Cursor::new(Vec::new());
+        let mut writer = Writer::with_options(
+            cursor,
+            WriteOptions::new()
+                .profile("ros2")
+                .library("pcx-test")
+                .compression(None),
+        )
+        .expect("writer should start");
+        writer.finish().expect("writer should finish");
+        let bytes = writer.into_inner().into_inner();
+
+        let discovery = discover_topics(Cursor::new(bytes), SourceOptions::default())
+            .expect("empty container should be valid");
+
+        assert!(discovery.channels().is_empty());
+    }
+
+    #[test]
+    fn topic_discovery_rejects_malformed_mcap_without_panicking() {
+        let result = std::panic::catch_unwind(|| {
+            discover_topics(
+                Cursor::new(b"not an MCAP".to_vec()),
+                SourceOptions::default(),
+            )
+        });
+
+        let error = result
+            .expect("malformed discovery must not panic")
+            .expect_err("malformed MCAP must fail");
+        assert!(matches!(error, ProbeError::Reader { .. }));
+    }
+
+    #[test]
+    fn topic_discovery_rejects_conflicting_duplicate_schema_ids() {
+        let mut schemas = BTreeMap::new();
+        insert_schema(
+            &mut schemas,
+            7,
+            SchemaDeclaration {
+                name: "sensor_msgs/msg/PointCloud2".into(),
+                encoding: "ros2msg".into(),
+                data: Arc::from(b"first".as_slice()),
+            },
+        )
+        .expect("first declaration should be accepted");
+
+        let error = insert_schema(
+            &mut schemas,
+            7,
+            SchemaDeclaration {
+                name: "sensor_msgs/msg/PointCloud2".into(),
+                encoding: "ros2msg".into(),
+                data: Arc::from(b"conflict".as_slice()),
+            },
+        )
+        .expect_err("conflicting declaration should fail");
+
+        assert!(matches!(error, ProbeError::Discovery { .. }));
+        assert!(error.to_string().contains("MCAP Schema 7"));
     }
 }

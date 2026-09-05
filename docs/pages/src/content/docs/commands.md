@@ -9,14 +9,16 @@ description: Current interface and accepted v0.1 command contracts.
 pcx --help
 pcx --version
 pcx info INPUT.mcap [--json]
+pcx topics INPUT.mcap [--json]
 ```
 
 `pcx info` streams through an MCAP Source without decoding point frames. Human output and versioned JSON go to stdout; successful inspection leaves stderr empty.
 
+`pcx topics` lists each MCAP Channel with its user-facing Topic, Schema, encodings, message count, and metadata-based ROS 2 PointCloud2 candidate status. Candidate status does not claim that message payloads have been decoded or validated.
+
 ## Accepted for v0.1
 
 ```bash
-pcx topics INPUT.mcap [--json]
 pcx extract INPUT.mcap --topic TOPIC --frame INDEX [-o OUTPUT.pcd]
 ```
 

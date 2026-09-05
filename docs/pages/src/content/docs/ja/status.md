@@ -11,9 +11,9 @@ description: 現在利用できる機能と今後の順序。
 - architecture、domain language、ADR、test strategy;
 - Nix、CI、Pages、release automationの基盤。
 
-## v0.1 MCAP vertical slice — 計画中
+## v0.1 MCAP vertical slice — 実装中
 
-1. Topic一覧;
+1. Topic、Channel、Schema、message countのdiscovery — 利用可能;
 2. `sensor_msgs/msg/PointCloud2`向けstrict ROS 2 CDR decode;
 3. 可能な経路でzero-copy `PointView`;
 4. indexまたはMCAP log timeによるPoint Frame選択;

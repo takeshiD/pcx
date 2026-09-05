@@ -437,6 +437,17 @@ impl PointView {
         self.source.len()
     }
 
+    /// Attach the containing record's times without replacing the sensor time.
+    pub fn with_container_times(mut self, log_time_ns: u64, publish_time_ns: u64) -> Self {
+        self.metadata = Arc::new(
+            self.metadata
+                .as_ref()
+                .clone()
+                .with_container_times(log_time_ns, publish_time_ns),
+        );
+        self
+    }
+
     /// Returns field access tied to this view's lifetime.
     pub fn field(&self, name: &str) -> Option<PointFieldView<'_>> {
         let index = self.layout.schema.field_index(name)?;

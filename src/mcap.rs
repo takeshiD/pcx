@@ -24,6 +24,7 @@ const RECORD_ENVELOPE_BYTES: usize = 9;
 const ROS2_POINTCLOUD2_SCHEMA: &str = "sensor_msgs/msg/PointCloud2";
 const ROS2_SCHEMA_ENCODING: &str = "ros2msg";
 const ROS2_MESSAGE_ENCODING: &str = "cdr";
+const DECLARATION_INDEX_BYTES: u64 = u16::MAX as u64 + 1;
 
 /// A Schema associated with a discovered MCAP Channel.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -252,6 +253,14 @@ impl SourceOptions {
             .ok_or(ProbeError::InvalidOptions("max_record_bytes is too large"))?;
         Ok(self)
     }
+
+    /// Conservative managed bytes retained while selecting one Topic message.
+    pub fn selection_retained_bytes(self) -> Option<u64> {
+        u64::try_from(self.read_chunk_bytes)
+            .ok()?
+            .checked_add(u64::try_from(self.max_record_bytes).ok()?)?
+            .checked_add(DECLARATION_INDEX_BYTES)
+    }
 }
 
 /// High-water marks observed while pulling records from a source.
@@ -313,6 +322,7 @@ pub struct SelectedMessage {
     sequence: u32,
     log_time: u64,
     publish_time: u64,
+    ros2_pointcloud2_candidate: bool,
     data: Arc<[u8]>,
 }
 
@@ -333,8 +343,19 @@ impl SelectedMessage {
         self.publish_time
     }
 
+    /// Whether this message's Channel and Schema declarations select the
+    /// supported ROS 2 PointCloud2 CDR adapter.
+    pub const fn is_ros2_pointcloud2_candidate(&self) -> bool {
+        self.ros2_pointcloud2_candidate
+    }
+
     pub fn data(&self) -> &[u8] {
         &self.data
+    }
+
+    /// Transfer ownership of the encoded message bytes to a decoder.
+    pub fn into_data(self) -> Arc<[u8]> {
+        self.data
     }
 }
 
@@ -797,18 +818,31 @@ fn select_by_index<R: Read + Seek>(
     index: u64,
     selector: FrameSelector,
 ) -> Result<SelectedMessage, SelectionError> {
-    let mut matching_channels = vec![false; usize::from(u16::MAX) + 1];
+    let mut declarations = vec![0_u8; usize::from(u16::MAX) + 1];
     let mut topic_found = false;
     let mut matching_index = 0_u64;
     while let Some(record) = source.next_probe()? {
         match record {
+            ProbeRecord::Schema {
+                id, name, encoding, ..
+            } => {
+                declarations[usize::from(id)] =
+                    u8::from(name == ROS2_POINTCLOUD2_SCHEMA && encoding == ROS2_SCHEMA_ENCODING);
+            }
             ProbeRecord::Channel {
                 id,
+                schema_id,
                 topic: channel_topic,
+                message_encoding,
                 ..
             } => {
                 let matches = channel_topic == topic;
-                matching_channels[usize::from(id)] = matches;
+                let schema_matches = declarations[usize::from(schema_id)] & 1 != 0;
+                declarations[usize::from(id)] = (declarations[usize::from(id)] & 1)
+                    | (u8::from(matches) << 1)
+                    | (u8::from(
+                        matches && schema_matches && message_encoding == ROS2_MESSAGE_ENCODING,
+                    ) << 2);
                 topic_found |= matches;
             }
             ProbeRecord::Message {
@@ -817,13 +851,14 @@ fn select_by_index<R: Read + Seek>(
                 log_time,
                 publish_time,
                 data,
-            } if matching_channels[usize::from(channel_id)] => {
+            } if declarations[usize::from(channel_id)] & 2 != 0 => {
                 if matching_index == index {
                     return Ok(SelectedMessage {
                         channel_id,
                         sequence,
                         log_time,
                         publish_time,
+                        ros2_pointcloud2_candidate: declarations[usize::from(channel_id)] & 4 != 0,
                         data,
                     });
                 }
@@ -869,26 +904,43 @@ fn select_at_or_after<R: Read + Seek>(
     threshold: u64,
     selector: FrameSelector,
 ) -> Result<SelectedMessage, SelectionError> {
-    let mut matching_channels = vec![false; usize::from(u16::MAX) + 1];
+    let mut declarations = vec![0_u8; usize::from(u16::MAX) + 1];
     while let Some(record) = source.next_probe()? {
         match record {
+            ProbeRecord::Schema {
+                id, name, encoding, ..
+            } => {
+                declarations[usize::from(id)] =
+                    u8::from(name == ROS2_POINTCLOUD2_SCHEMA && encoding == ROS2_SCHEMA_ENCODING);
+            }
             ProbeRecord::Channel {
                 id,
+                schema_id,
                 topic: channel_topic,
+                message_encoding,
                 ..
-            } => matching_channels[usize::from(id)] = channel_topic == topic,
+            } => {
+                let matches = channel_topic == topic;
+                let schema_matches = declarations[usize::from(schema_id)] & 1 != 0;
+                declarations[usize::from(id)] = (declarations[usize::from(id)] & 1)
+                    | (u8::from(matches) << 1)
+                    | (u8::from(
+                        matches && schema_matches && message_encoding == ROS2_MESSAGE_ENCODING,
+                    ) << 2);
+            }
             ProbeRecord::Message {
                 channel_id,
                 sequence,
                 log_time,
                 publish_time,
                 data,
-            } if matching_channels[usize::from(channel_id)] && log_time >= threshold => {
+            } if declarations[usize::from(channel_id)] & 2 != 0 && log_time >= threshold => {
                 return Ok(SelectedMessage {
                     channel_id,
                     sequence,
                     log_time,
                     publish_time,
+                    ros2_pointcloud2_candidate: declarations[usize::from(channel_id)] & 4 != 0,
                     data,
                 });
             }

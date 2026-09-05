@@ -6,16 +6,22 @@ use std::{
     io::{self, Write},
     path::PathBuf,
     process::ExitCode,
+    time::Duration,
 };
 
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 
 use crate::{
     core::{
-        ByteBound, Cancellation, Error, ErrorCategory, ExecutionPlan, ExecutionReport, JobSpec,
-        PipelineMemoryRequirements, Planner, Result as CoreResult, SourceSpec,
+        ByteBound, Cancellation, Destination, Error, ErrorCategory, ExecutionPlan, ExecutionReport,
+        FrameSelector, JobSpec, PipelineMemoryRequirements, Planner, Result as CoreResult,
+        SourceSpec, write_output,
     },
-    mcap::{self, DiscoveredChannel, ProbeError, SourceOptions, TopicDiscovery},
+    mcap::{
+        self, DiscoveredChannel, ProbeError, SelectionError, Source, SourceOptions, TopicDiscovery,
+    },
+    pcd::{self, Encoding},
+    ros2,
 };
 
 struct InterruptHandler {
@@ -116,7 +122,7 @@ fn report_error(error: &Error) -> ExitStatus {
     name = "pcx",
     version,
     about = "Inspect and reduce point-cloud recordings on edge Linux systems",
-    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nThe current release can inspect MCAP container metadata with `pcx info` and discover Topics, Channels, Schemas, and message counts with `pcx topics`."
+    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nInspect MCAP metadata and Topics, or extract one ROS 2 PointCloud2 frame to PCD."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -129,6 +135,8 @@ enum Command {
     Info(InfoArgs),
     /// Discover Topics, MCAP Channels, Schemas, and message counts.
     Topics(TopicsArgs),
+    /// Extract exactly one ROS 2 PointCloud2 Point Frame as PCD.
+    Extract(ExtractArgs),
 }
 
 #[derive(Debug, Args)]
@@ -151,6 +159,62 @@ struct TopicsArgs {
     /// Print versioned JSON instead of human-readable text.
     #[arg(long)]
     json: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum PcdEncoding {
+    Binary,
+    Ascii,
+}
+
+impl From<PcdEncoding> for Encoding {
+    fn from(value: PcdEncoding) -> Self {
+        match value {
+            PcdEncoding::Binary => Self::Binary,
+            PcdEncoding::Ascii => Self::Ascii,
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("selector")
+        .required(true)
+        .multiple(false)
+        .args(["frame", "at"])
+))]
+struct ExtractArgs {
+    /// MCAP Source containing the Point Frame.
+    #[arg(value_name = "INPUT.mcap")]
+    input: PathBuf,
+
+    /// Topic whose messages are counted as Point Frames.
+    #[arg(long, value_name = "TOPIC")]
+    topic: String,
+
+    /// Zero-based Point Frame index after Topic selection.
+    #[arg(long, value_name = "INDEX")]
+    frame: Option<u64>,
+
+    /// First Point Frame at or after this duration from recording start.
+    #[arg(long, value_name = "DURATION", value_parser = parse_duration)]
+    at: Option<Duration>,
+
+    /// Output PCD path, or '-' for binary-safe stdout.
+    #[arg(short, long, value_name = "PATH|-", required = true)]
+    output: PathBuf,
+
+    /// Replace an existing output file.
+    #[arg(long)]
+    force: bool,
+
+    /// PCD payload representation.
+    #[arg(long, value_enum, default_value = "binary")]
+    encoding: PcdEncoding,
+
+    /// Hard managed-memory limit in bytes.
+    #[arg(long, value_name = "BYTES", default_value_t = 512 * 1024 * 1024_u64)]
+    memory_limit: u64,
 }
 
 /// Parse command-line arguments without terminating the process.
@@ -191,6 +255,7 @@ fn run(cli: Cli, output: &mut impl Write) -> Result<(), RunFailure> {
     match cli.command {
         Some(Command::Info(args)) => run_info(args, output),
         Some(Command::Topics(args)) => run_topics(args, output),
+        Some(Command::Extract(args)) => run_extract(args),
         None => {
             Cli::command()
                 .write_help(output)
@@ -200,10 +265,94 @@ fn run(cli: Cli, output: &mut impl Write) -> Result<(), RunFailure> {
     }
 }
 
+fn run_extract(args: ExtractArgs) -> Result<(), RunFailure> {
+    let source_spec = SourceSpec::file(args.input.clone()).map_err(RunFailure::core)?;
+    let destination = if args.output.as_os_str() == "-" {
+        if args.force {
+            return Err(RunFailure::core(Error::new(
+                ErrorCategory::Usage,
+                "--force is only valid for file output",
+            )));
+        }
+        Destination::stdout()
+    } else {
+        Destination::file(args.output, args.force).map_err(RunFailure::core)?
+    };
+    let selector = match (args.frame, args.at) {
+        (Some(index), None) => FrameSelector::Index(index),
+        (None, Some(duration)) => FrameSelector::At(duration),
+        _ => unreachable!("clap requires exactly one frame selector"),
+    };
+    let job = JobSpec::extract(source_spec, args.topic, selector, destination.clone())
+        .map_err(RunFailure::core)?;
+    let options = SourceOptions::default();
+
+    // Prove the bounded MCAP read stage before opening the Source. A second,
+    // tighter plan below accounts for the selected decoded view.
+    plan_selection_job(job.clone(), options, args.memory_limit)?;
+
+    let file = File::open(job.source().path()).map_err(|source| RunFailure {
+        category: ErrorCategory::Io,
+        message: format!(
+            "failed to open Source '{}': {source}",
+            job.source().path().display()
+        ),
+        broken_pipe: false,
+    })?;
+    let mut source = Source::new(file, options).map_err(probe_failure)?;
+    let selected = mcap::select_topic_message(&mut source, job.extraction().unwrap().0, selector)
+        .map_err(selection_failure)?;
+    drop(source);
+
+    if !selected.is_ros2_pointcloud2_candidate() {
+        return Err(RunFailure::core(Error::new(
+            ErrorCategory::Unsupported,
+            format!(
+                "selected MCAP Channel {} is not declared as ROS 2 PointCloud2 with ros2msg/CDR encoding",
+                selected.channel_id()
+            ),
+        )));
+    }
+
+    let log_time = selected.log_time();
+    let publish_time = selected.publish_time();
+    let view = ros2::pointcloud2::decode(selected.into_data())
+        .map_err(|error| RunFailure {
+            category: ErrorCategory::InvalidData,
+            message: error.to_string(),
+            broken_pipe: false,
+        })?
+        .with_container_times(log_time, publish_time);
+    pcd::validate(&view).map_err(pcd_failure)?;
+    let requirements = PipelineMemoryRequirements::for_point_view(
+        &view,
+        false,
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+    )
+    .map_err(RunFailure::core)?;
+    Planner::new()
+        .plan(job, requirements, args.memory_limit)
+        .map_err(RunFailure::core)?;
+
+    let handler = InterruptHandler::install().map_err(|error| RunFailure {
+        category: ErrorCategory::Internal,
+        message: format!("could not install interrupt handler: {error}"),
+        broken_pipe: false,
+    })?;
+    write_output(&destination, &handler.cancellation, |writer| {
+        pcd::write(&mut &mut *writer, &view, args.encoding.into()).map_err(io::Error::other)
+    })
+    .map_err(RunFailure::core)?;
+    Ok(())
+}
+
 fn run_info(args: InfoArgs, output: &mut impl Write) -> Result<(), RunFailure> {
     let source = SourceSpec::file(args.input.clone()).map_err(RunFailure::core)?;
     let options = SourceOptions::default();
-    let plan = plan_container_job(JobSpec::info(source), options)?;
+    let plan = plan_container_job(JobSpec::info(source), options, u64::MAX)?;
 
     let file = File::open(&args.input).map_err(|source| RunFailure {
         category: ErrorCategory::Io,
@@ -229,7 +378,11 @@ fn run_info(args: InfoArgs, output: &mut impl Write) -> Result<(), RunFailure> {
     }
 }
 
-fn plan_container_job(job: JobSpec, options: SourceOptions) -> Result<ExecutionPlan, RunFailure> {
+fn plan_container_job(
+    job: JobSpec,
+    options: SourceOptions,
+    limit_bytes: u64,
+) -> Result<ExecutionPlan, RunFailure> {
     let retained_input_bytes = u64::try_from(options.read_chunk_bytes)
         .ok()
         .and_then(|read| {
@@ -252,7 +405,31 @@ fn plan_container_job(job: JobSpec, options: SourceOptions) -> Result<ExecutionP
         ByteBound::bounded(0),
     );
     Planner::new()
-        .plan(job, requirements, u64::MAX)
+        .plan(job, requirements, limit_bytes)
+        .map_err(RunFailure::core)
+}
+
+fn plan_selection_job(
+    job: JobSpec,
+    options: SourceOptions,
+    limit_bytes: u64,
+) -> Result<ExecutionPlan, RunFailure> {
+    let retained_input_bytes = options.selection_retained_bytes().ok_or_else(|| {
+        RunFailure::core(Error::new(
+            ErrorCategory::Resource,
+            "MCAP selection retained-input bound overflowed",
+        ))
+    })?;
+    let requirements = PipelineMemoryRequirements::new(
+        ByteBound::bounded(retained_input_bytes),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+    );
+    Planner::new()
+        .plan(job, requirements, limit_bytes)
         .map_err(RunFailure::core)
 }
 
@@ -262,6 +439,69 @@ fn probe_failure(error: ProbeError) -> RunFailure {
         message: error.to_string(),
         broken_pipe: false,
     }
+}
+
+fn selection_failure(error: SelectionError) -> RunFailure {
+    RunFailure {
+        category: error.category(),
+        message: error.to_string(),
+        broken_pipe: false,
+    }
+}
+
+fn pcd_failure(error: pcd::Error) -> RunFailure {
+    RunFailure {
+        category: match error {
+            pcd::Error::Io(_) => ErrorCategory::Io,
+            pcd::Error::Access(_) => ErrorCategory::InvalidData,
+            _ => ErrorCategory::Unsupported,
+        },
+        message: error.to_string(),
+        broken_pipe: false,
+    }
+}
+
+fn parse_duration(value: &str) -> Result<Duration, String> {
+    let (number, scale, fractional_digits) = if let Some(number) = value.strip_suffix("ms") {
+        (number, 1_000_000_u64, 6_usize)
+    } else if let Some(number) = value.strip_suffix("us") {
+        (number, 1_000_u64, 3_usize)
+    } else if let Some(number) = value.strip_suffix("ns") {
+        (number, 1_u64, 0_usize)
+    } else if let Some(number) = value.strip_suffix('s') {
+        (number, 1_000_000_000_u64, 9_usize)
+    } else {
+        return Err("duration must end in s, ms, us, or ns".to_owned());
+    };
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+        || fraction.len() > fractional_digits
+    {
+        return Err(format!("invalid duration {value:?}"));
+    }
+    let whole = whole
+        .parse::<u64>()
+        .map_err(|_| format!("duration {value:?} is too large"))?;
+    let whole_nanos = whole
+        .checked_mul(scale)
+        .ok_or_else(|| format!("duration {value:?} is too large"))?;
+    let fraction_nanos = if fraction.is_empty() {
+        0
+    } else {
+        let parsed = fraction
+            .parse::<u64>()
+            .map_err(|_| format!("invalid duration {value:?}"))?;
+        let padding = u32::try_from(fractional_digits - fraction.len()).unwrap();
+        parsed
+            .checked_mul(10_u64.pow(padding))
+            .ok_or_else(|| format!("duration {value:?} is too large"))?
+    };
+    whole_nanos
+        .checked_add(fraction_nanos)
+        .map(Duration::from_nanos)
+        .ok_or_else(|| format!("duration {value:?} is too large"))
 }
 
 /// Run the process entrypoint using the environment arguments.
@@ -290,7 +530,7 @@ pub fn main() -> ExitCode {
 fn run_topics(args: TopicsArgs, output: &mut impl Write) -> Result<(), RunFailure> {
     let source = SourceSpec::file(args.input.clone()).map_err(RunFailure::core)?;
     let options = SourceOptions::default();
-    let plan = plan_container_job(JobSpec::topics(source), options)?;
+    let plan = plan_container_job(JobSpec::topics(source), options, u64::MAX)?;
 
     let file = File::open(&args.input).map_err(|source| RunFailure {
         category: ErrorCategory::Io,

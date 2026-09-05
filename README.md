@@ -4,7 +4,7 @@
 
 `pcx` is a shell-native toolbox for inspecting and reducing point-cloud recordings on edge Linux systems.
 
-> **Project status:** early v0.1 development. The executable provides `pcx info`, `pcx topics`, `--help`, and `--version`; point-frame extraction remains planned.
+> **Project status:** early v0.1 development. The executable provides `pcx info`, `pcx topics`, one-frame `pcx extract`, `--help`, and `--version`.
 
 ## Why pcx?
 
@@ -23,8 +23,8 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 | `pcx --help`, `pcx --version`                      | Available             |
 | `pcx info` MCAP metadata                           | Available             |
 | MCAP Topic listing with human and JSON output      | Available             |
-| ROS 2 `PointCloud2` frame extraction               | Planned for v0.1      |
-| Binary and ASCII PCD output                        | Planned for v0.1      |
+| ROS 2 `PointCloud2` frame extraction               | Available             |
+| Binary and ASCII PCD output                        | Available             |
 | Crop, field selection, frame-local voxel reduction | Planned               |
 | PLY, LAS/LAZ and terminal rendering                | Planned               |
 | AWS/S3 upload and cloud credentials                | Out of scope          |
@@ -56,17 +56,20 @@ nix develop github:takeshiD/pcx
 
 ## v0.1 workflow
 
-MCAP metadata inspection and Topic discovery are available now; extraction documents the accepted v0.1 design.
+MCAP metadata inspection, Topic discovery, and one-frame extraction are available now.
 
 ```bash
 pcx info run.mcap
 pcx topics run.mcap --json
-# Planned:
 pcx extract run.mcap \
   --topic /lidar/points \
   --frame 0 \
   -o frame.pcd
 ```
+
+Choose exactly one of `--frame INDEX` and `--at DURATION`. Binary PCD is the
+default; pass `--encoding ascii` for text PCD. `--memory-limit BYTES` is a hard
+managed-memory budget. Output must be an explicit path or `-` for stdout.
 
 Transfer remains the shell's job:
 

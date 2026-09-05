@@ -1,0 +1,11 @@
+# independently generated strict PCD reader fixture
+VERSION 0.7
+FIELDS clock
+SIZE 8
+TYPE U
+COUNT 1
+WIDTH 1
+HEIGHT 1
+VIEWPOINT 0 0 0 1 0 0 0
+POINTS 1
+DATA ascii

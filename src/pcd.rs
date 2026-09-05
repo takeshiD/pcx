@@ -1,7 +1,13 @@
-//! Deterministic PCD v0.7 encoding for validated point frames.
+//! Strict PCD v0.7 decoding and deterministic encoding for point frames.
 //!
-//! The writer emits ordered, packed point records derived from the core schema.
-//! Source padding and byte order are representation details and are not copied.
+//! The supported subset is the lossless intersection with the common point
+//! model: ASCII and little-endian binary payloads with the default viewpoint.
+//! Binary-compressed data and spatial metadata that cannot be retained are
+//! rejected explicitly.
+
+mod reader;
+
+pub use reader::{ReadError, ReadPlan, ReadResult, read};
 
 use crate::core::point::{
     AccessError, PointBatch, PointColumn, PointDimensions, PointSchema, PointValue, PointView,

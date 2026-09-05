@@ -1,0 +1,11 @@
+# independently generated strict PCD reader fixture
+VERSION 0.7
+FIELDS x
+SIZE 4
+TYPE F
+COUNT 1
+WIDTH 18446744073709551615
+HEIGHT 2
+VIEWPOINT 0 0 0 1 0 0 0
+POINTS 1
+DATA ascii

@@ -314,6 +314,45 @@ fn binary_ply(endian: Endian) -> Vec<u8> {
     output
 }
 
+fn single_field_pcd(
+    field_lines: &str,
+    width: &str,
+    height: &str,
+    viewpoint: &str,
+    points: &str,
+    data: &str,
+) -> String {
+    format!(
+        "# independently generated strict PCD reader fixture\n\
+VERSION 0.7\n\
+{field_lines}\n\
+WIDTH {width}\n\
+HEIGHT {height}\n\
+VIEWPOINT {viewpoint}\n\
+POINTS {points}\n\
+DATA {data}\n"
+    )
+}
+
+fn organized_unknown_fields_pcd() -> String {
+    "# independently generated strict PCD reader fixture\n\
+VERSION 0.7\n\
+FIELDS descriptor quality flag\n\
+SIZE 2 8 1\n\
+TYPE I F U\n\
+COUNT 2 1 1\n\
+WIDTH 2\n\
+HEIGHT 2\n\
+VIEWPOINT 0.0 -0 0 1.0 0 0 0\n\
+POINTS 4\n\
+DATA ascii\n\
+1 2 1.25 1\n\
+3 4 -0 0\n\
+5 6 -inf 1\n\
+7 8 nan 0\n"
+        .into()
+}
+
 fn write(root: &Path, relative: &str, bytes: impl AsRef<[u8]>) {
     let path = root.join(relative);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -393,6 +432,11 @@ fn main() {
             "{}1 -2.5 0 42 7\n-0 inf nan 65535 8\n",
             pcd_header(2, "ascii")
         ),
+    );
+    write(
+        root,
+        "valid/pcd-organized-unknown-fields-ascii.pcd",
+        organized_unknown_fields_pcd(),
     );
     write(
         root,
@@ -542,6 +586,114 @@ fn main() {
         root,
         "malformed/pcd-points-must-equal-width-times-height.pcd",
         format!("{}1 -2.5 0 42 7\n", pcd_header(1, "ascii")),
+    );
+    write(
+        root,
+        "malformed/pcd-directives-must-be-ordered.pcd",
+        "VERSION 0.7\nSIZE 4\nFIELDS x\nTYPE F\nCOUNT 1\nWIDTH 1\nHEIGHT 1\nVIEWPOINT 0 0 0 1 0 0 0\nPOINTS 1\nDATA ascii\n1\n",
+    );
+    write(
+        root,
+        "malformed/pcd-field-vectors-must-align.pcd",
+        single_field_pcd(
+            "FIELDS x y\nSIZE 4\nTYPE F F\nCOUNT 1 1",
+            "1", "1", "0 0 0 1 0 0 0", "1", "ascii",
+        ),
+    );
+    write(
+        root,
+        "malformed/pcd-field-type-size-must-be-supported.pcd",
+        single_field_pcd(
+            "FIELDS clock\nSIZE 8\nTYPE U\nCOUNT 1",
+            "1", "1", "0 0 0 1 0 0 0", "1", "ascii",
+        ),
+    );
+    write(
+        root,
+        "malformed/pcd-field-count-must-be-positive.pcd",
+        single_field_pcd(
+            "FIELDS x\nSIZE 4\nTYPE F\nCOUNT 0",
+            "1", "1", "0 0 0 1 0 0 0", "1", "ascii",
+        ),
+    );
+    write(
+        root,
+        "malformed/pcd-field-names-must-be-unique.pcd",
+        single_field_pcd(
+            "FIELDS x x\nSIZE 4 4\nTYPE F F\nCOUNT 1 1",
+            "1", "1", "0 0 0 1 0 0 0", "1", "ascii",
+        ) + "1 2\n",
+    );
+    write(
+        root,
+        "malformed/pcd-dimensions-must-not-overflow.pcd",
+        single_field_pcd(
+            "FIELDS x\nSIZE 4\nTYPE F\nCOUNT 1",
+            "18446744073709551615", "2",
+            "0 0 0 1 0 0 0", "1", "ascii",
+        ),
+    );
+    write(
+        root,
+        "malformed/pcd-height-must-be-positive.pcd",
+        single_field_pcd(
+            "FIELDS x\nSIZE 4\nTYPE F\nCOUNT 1",
+            "1", "0", "0 0 0 1 0 0 0", "0", "ascii",
+        ),
+    );
+    write(
+        root,
+        "malformed/pcd-viewpoint-must-be-preservable.pcd",
+        single_field_pcd(
+            "FIELDS x\nSIZE 4\nTYPE F\nCOUNT 1",
+            "1", "1", "1 0 0 1 0 0 0", "1", "ascii",
+        ),
+    );
+    write(
+        root,
+        "malformed/pcd-compressed-must-be-rejected.pcd",
+        single_field_pcd(
+            "FIELDS x\nSIZE 4\nTYPE F\nCOUNT 1",
+            "1", "1", "0 0 0 1 0 0 0", "1", "binary_compressed",
+        ),
+    );
+    write(
+        root,
+        "malformed/pcd-ascii-payload-must-be-complete.pcd",
+        single_field_pcd(
+            "FIELDS x\nSIZE 4\nTYPE F\nCOUNT 1",
+            "2", "1", "0 0 0 1 0 0 0", "2", "ascii",
+        ) + "1\n",
+    );
+    write(
+        root,
+        "malformed/pcd-ascii-payload-must-not-have-extra-values.pcd",
+        single_field_pcd(
+            "FIELDS x\nSIZE 4\nTYPE F\nCOUNT 1",
+            "1", "1", "0 0 0 1 0 0 0", "1", "ascii",
+        ) + "1 2\n",
+    );
+    let mut short_binary = single_field_pcd(
+        "FIELDS x\nSIZE 4\nTYPE F\nCOUNT 1",
+        "1", "1", "0 0 0 1 0 0 0", "1", "binary",
+    ).into_bytes();
+    short_binary.extend([0_u8; 3]);
+    write(
+        root,
+        "malformed/pcd-binary-payload-must-be-exact.pcd",
+        short_binary,
+    );
+    let mut long_binary = single_field_pcd(
+        "FIELDS x\nSIZE 4\nTYPE F\nCOUNT 1",
+        "1", "1", "0 0 0 1 0 0 0", "1", "binary",
+    )
+    .into_bytes();
+    long_binary.extend(1.0_f32.to_le_bytes());
+    long_binary.push(0);
+    write(
+        root,
+        "malformed/pcd-binary-payload-must-not-have-extra-bytes.pcd",
+        long_binary,
     );
     write(
         root,

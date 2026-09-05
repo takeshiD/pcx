@@ -7,17 +7,17 @@ description: 現在利用できる機能と今後の順序。
 
 - `pcx` binaryを持つpublish可能な`pcx-cli` package;
 - `--help`と`--version`;
+- boundedな同期MCAP readと`pcx info` metadata出力;
 - architecture、domain language、ADR、test strategy;
 - Nix、CI、Pages、release automationの基盤。
 
 ## v0.1 MCAP vertical slice — 計画中
 
-1. boundedな同期MCAP read;
-2. metadataとTopic一覧;
-3. `sensor_msgs/msg/PointCloud2`向けstrict ROS 2 CDR decode;
-4. 可能な経路でzero-copy `PointView`;
-5. indexまたはMCAP log timeによるPoint Frame選択;
-6. binary／ASCII PCD出力。
+1. Topic一覧;
+2. `sensor_msgs/msg/PointCloud2`向けstrict ROS 2 CDR decode;
+3. 可能な経路でzero-copy `PointView`;
+4. indexまたはMCAP log timeによるPoint Frame選択;
+5. binary／ASCII PCD出力。
 
 ## その後
 

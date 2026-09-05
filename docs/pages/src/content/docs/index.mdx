@@ -18,8 +18,8 @@ hero:
 `pcx` helps robotics and LiDAR engineers understand a recording before moving gigabytes off a robot. It is designed as a single synchronous executable with bounded managed memory and a binary-safe stdout.
 
 <ul class="status-list">
-  <li class="status-card" data-state="available"><strong>Available</strong><span>Package skeleton, help/version, architecture, tests, Nix and delivery foundation.</span></li>
-  <li class="status-card" data-state="planned"><strong>Planned for v0.1</strong><span>MCAP metadata, Topic listing and one ROS 2 PointCloud2 frame to PCD.</span></li>
+  <li class="status-card" data-state="available"><strong>Available</strong><span>MCAP metadata inspection, help/version, architecture, tests, Nix and delivery foundation.</span></li>
+  <li class="status-card" data-state="planned"><strong>Planned for v0.1</strong><span>Topic listing and one ROS 2 PointCloud2 frame to PCD.</span></li>
   <li class="status-card" data-state="out"><strong>Out of scope</strong><span>AWS/S3 clients, cloud credentials, daemon mode, GUI and ROS runtime.</span></li>
 </ul>
 
@@ -30,7 +30,7 @@ inspect -> reduce -> transfer with existing shell tools
 ```
 
 ```bash
-# Accepted v0.1 interface — not implemented yet.
+# `info` is available; the remaining commands are planned.
 pcx info run.mcap
 pcx topics run.mcap --json
 pcx extract run.mcap --topic /lidar/points --frame 0 -o frame.pcd

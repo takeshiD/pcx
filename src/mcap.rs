@@ -109,6 +109,7 @@ pub enum ProbeRecord {
         publish_time: u64,
         data: Arc<[u8]>,
     },
+    DataEnd,
 }
 
 impl ProbeRecord {
@@ -134,6 +135,136 @@ impl ProbeRecord {
                 ..
             } => topic.len() + message_encoding.len() + map_bytes(metadata),
             Self::Message { data, .. } => data.len(),
+            Self::DataEnd => 0,
+        }
+    }
+}
+
+/// Deterministic container metadata produced without decoding message payloads.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+pub struct Info {
+    pub profile: String,
+    pub library: String,
+    pub size_bytes: u64,
+    pub message_count: u64,
+    pub schema_count: u64,
+    pub channel_count: u64,
+    pub metadata_count: u64,
+    pub start_log_time_ns: Option<u64>,
+    pub end_log_time_ns: Option<u64>,
+    pub duration_ns: Option<u64>,
+}
+
+impl fmt::Display for Info {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let profile = nonempty_or_none(&self.profile);
+        let library = nonempty_or_none(&self.library);
+        writeln!(formatter, "Profile: {profile}")?;
+        writeln!(formatter, "Library: {library}")?;
+        writeln!(formatter, "Size: {} bytes", self.size_bytes)?;
+        writeln!(formatter, "Messages: {}", self.message_count)?;
+        writeln!(formatter, "Schemas: {}", self.schema_count)?;
+        writeln!(formatter, "Channels: {}", self.channel_count)?;
+        writeln!(formatter, "Metadata records: {}", self.metadata_count)?;
+        writeln!(
+            formatter,
+            "Start log time: {}",
+            optional_nanoseconds(self.start_log_time_ns)
+        )?;
+        writeln!(
+            formatter,
+            "End log time: {}",
+            optional_nanoseconds(self.end_log_time_ns)
+        )?;
+        write!(
+            formatter,
+            "Duration: {}",
+            optional_nanoseconds(self.duration_ns)
+        )
+    }
+}
+
+fn nonempty_or_none(value: &str) -> &str {
+    if value.is_empty() { "none" } else { value }
+}
+
+fn optional_nanoseconds(value: Option<u64>) -> String {
+    value.map_or_else(|| "none".to_owned(), |value| format!("{value} ns"))
+}
+
+/// Inspect one MCAP Source using bounded synchronous reads.
+pub fn inspect<R: Read + Seek>(input: R, options: SourceOptions) -> Result<Info, ProbeError> {
+    let mut source = Source::new(input, options)?;
+    let mut builder = InfoBuilder::default();
+
+    while let Some(record) = source.next_probe()? {
+        builder.observe(record);
+    }
+
+    Ok(builder.finish(source.stats().bytes_read))
+}
+
+#[derive(Default)]
+struct InfoBuilder {
+    profile: String,
+    library: String,
+    message_count: u64,
+    schema_count: u64,
+    channel_count: u64,
+    metadata_count: u64,
+    start_log_time_ns: Option<u64>,
+    end_log_time_ns: Option<u64>,
+    data_section_finished: bool,
+}
+
+impl InfoBuilder {
+    fn observe(&mut self, record: ProbeRecord) {
+        match record {
+            ProbeRecord::Header { profile, library } => {
+                self.profile = profile;
+                self.library = library;
+            }
+            ProbeRecord::Message { log_time, .. } if !self.data_section_finished => {
+                self.message_count = self.message_count.saturating_add(1);
+                self.start_log_time_ns = Some(
+                    self.start_log_time_ns
+                        .map_or(log_time, |current| current.min(log_time)),
+                );
+                self.end_log_time_ns = Some(
+                    self.end_log_time_ns
+                        .map_or(log_time, |current| current.max(log_time)),
+                );
+            }
+            ProbeRecord::Schema { .. } if !self.data_section_finished => {
+                self.schema_count = self.schema_count.saturating_add(1);
+            }
+            ProbeRecord::Channel { .. } if !self.data_section_finished => {
+                self.channel_count = self.channel_count.saturating_add(1);
+            }
+            ProbeRecord::Metadata { .. } if !self.data_section_finished => {
+                self.metadata_count = self.metadata_count.saturating_add(1);
+            }
+            ProbeRecord::DataEnd => self.data_section_finished = true,
+            _ => {}
+        }
+    }
+
+    fn finish(self, size_bytes: u64) -> Info {
+        let start = self.start_log_time_ns;
+        let end = self.end_log_time_ns;
+        let duration_ns = start.zip(end).map(|(start, end)| end.saturating_sub(start));
+
+        Info {
+            profile: self.profile,
+            library: self.library,
+            size_bytes,
+            message_count: self.message_count,
+            schema_count: self.schema_count,
+            channel_count: self.channel_count,
+            metadata_count: self.metadata_count,
+            start_log_time_ns: start,
+            end_log_time_ns: end,
+            duration_ns,
         }
     }
 }
@@ -337,6 +468,7 @@ fn own_probe_record(record: Record<'_>) -> Option<ProbeRecord> {
             publish_time: header.publish_time,
             data: Arc::from(data.as_ref()),
         }),
+        Record::DataEnd(_) => Some(ProbeRecord::DataEnd),
         _ => None,
     }
 }
@@ -354,15 +486,25 @@ mod tests {
         write::{WriteOptions, Writer},
     };
 
-    use super::{ProbeError, ProbeRecord, Source, SourceOptions};
+    use super::{Info, ProbeError, ProbeRecord, Source, SourceOptions, inspect};
 
     fn recording(compression: Option<Compression>, messages: &[&[u8]]) -> Vec<u8> {
+        recording_with_summary(compression, messages, true)
+    }
+
+    fn recording_with_summary(
+        compression: Option<Compression>,
+        messages: &[&[u8]],
+        emit_summary: bool,
+    ) -> Vec<u8> {
         let cursor = Cursor::new(Vec::new());
         let options = WriteOptions::new()
             .profile("ros2")
             .library("pcx-test")
             .compression(compression)
-            .chunk_size(Some(32));
+            .chunk_size(Some(32))
+            .emit_summary_records(emit_summary)
+            .emit_summary_offsets(emit_summary);
         let mut writer = Writer::with_options(cursor, options).expect("writer should start");
         let schema = writer
             .add_schema("sensor_msgs/msg/PointCloud2", "ros2msg", b"schema")
@@ -389,6 +531,14 @@ mod tests {
                 )
                 .expect("message should be written");
         }
+        writer.finish().expect("writer should finish");
+        writer.into_inner().into_inner()
+    }
+
+    fn empty_recording() -> Vec<u8> {
+        let cursor = Cursor::new(Vec::new());
+        let options = WriteOptions::new().profile("ros2").library("pcx-test");
+        let mut writer = Writer::with_options(cursor, options).expect("writer should start");
         writer.finish().expect("writer should finish");
         writer.into_inner().into_inner()
     }
@@ -441,6 +591,78 @@ mod tests {
             })
             .collect();
         assert_eq!(payloads, [b"one".as_slice(), b"two".as_slice()]);
+    }
+
+    #[test]
+    fn info_reports_counts_and_deterministic_log_time_bounds() {
+        let bytes = recording(None, &[b"one", b"two"]);
+        let expected_size = bytes.len() as u64;
+
+        let info = inspect(Cursor::new(bytes), SourceOptions::default())
+            .expect("recording should inspect");
+
+        assert_eq!(
+            info,
+            Info {
+                profile: "ros2".into(),
+                library: "pcx-test".into(),
+                size_bytes: expected_size,
+                message_count: 2,
+                schema_count: 1,
+                channel_count: 1,
+                metadata_count: 1,
+                start_log_time_ns: Some(100),
+                end_log_time_ns: Some(101),
+                duration_ns: Some(1),
+            }
+        );
+        assert_eq!(
+            info.to_string(),
+            "Profile: ros2\nLibrary: pcx-test\nSize: ".to_owned()
+                + &expected_size.to_string()
+                + " bytes\nMessages: 2\nSchemas: 1\nChannels: 1\nMetadata records: 1\nStart log time: 100 ns\nEnd log time: 101 ns\nDuration: 1 ns"
+        );
+    }
+
+    #[test]
+    fn info_does_not_require_a_summary_section() {
+        let bytes = recording_with_summary(None, &[b"one", b"two"], false);
+
+        let info = inspect(Cursor::new(bytes), SourceOptions::default())
+            .expect("recording without summary should inspect");
+
+        assert_eq!(info.message_count, 2);
+        assert_eq!(info.schema_count, 1);
+        assert_eq!(info.channel_count, 1);
+        assert_eq!(info.metadata_count, 1);
+        assert_eq!(info.start_log_time_ns, Some(100));
+        assert_eq!(info.end_log_time_ns, Some(101));
+    }
+
+    #[test]
+    fn valid_empty_container_has_zero_counts_and_no_time_range() {
+        let bytes = empty_recording();
+        let expected_size = bytes.len() as u64;
+
+        let info = inspect(Cursor::new(bytes), SourceOptions::default())
+            .expect("empty container should inspect");
+
+        assert_eq!(info.message_count, 0);
+        assert_eq!(info.schema_count, 0);
+        assert_eq!(info.channel_count, 0);
+        assert_eq!(info.metadata_count, 0);
+        assert_eq!(info.size_bytes, expected_size);
+        assert_eq!(info.start_log_time_ns, None);
+        assert_eq!(info.end_log_time_ns, None);
+        assert_eq!(info.duration_ns, None);
+    }
+
+    #[test]
+    fn empty_bytes_are_rejected_as_malformed_mcap() {
+        let error = inspect(Cursor::new(Vec::new()), SourceOptions::default())
+            .expect_err("zero-byte input must fail");
+
+        assert!(matches!(error, ProbeError::Reader { .. }));
     }
 
     #[test]

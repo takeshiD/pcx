@@ -8,14 +8,14 @@ description: Current interface and accepted v0.1 command contracts.
 ```bash
 pcx --help
 pcx --version
+pcx info INPUT.mcap [--json]
 ```
 
-Only the package foundation is implemented today.
+`pcx info` streams through an MCAP Source without decoding point frames. Human output and versioned JSON go to stdout; successful inspection leaves stderr empty.
 
 ## Accepted for v0.1
 
 ```bash
-pcx info INPUT.mcap
 pcx topics INPUT.mcap [--json]
 pcx extract INPUT.mcap --topic TOPIC --frame INDEX [-o OUTPUT.pcd]
 ```

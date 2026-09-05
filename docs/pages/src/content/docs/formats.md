@@ -7,7 +7,7 @@ description: Accepted format boundaries and fidelity rules.
 
 | Boundary | Read | Write | Status |
 | --- | --- | --- | --- |
-| MCAP container | Metadata, channels and messages | No | Planned for v0.1 |
+| MCAP container | Container metadata with `pcx info` | No | Available for inspection |
 | ROS 2 `sensor_msgs/msg/PointCloud2` | Strict CDR decoding | No | Planned for v0.1 |
 | PCD | No | Binary and ASCII | Planned for v0.1 |
 

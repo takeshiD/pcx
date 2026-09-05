@@ -12,8 +12,8 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::{
     core::{
-        Cancellation, Error, ErrorCategory, ExecutionPlan, ExecutionReport, JobSpec,
-        ManagedMemoryBound, Result as CoreResult, SourceSpec,
+        ByteBound, Cancellation, Error, ErrorCategory, ExecutionPlan, ExecutionReport, JobSpec,
+        PipelineMemoryRequirements, Planner, Result as CoreResult, SourceSpec,
     },
     mcap::{self, DiscoveredChannel, ProbeError, SourceOptions, TopicDiscovery},
 };
@@ -203,20 +203,7 @@ fn run(cli: Cli, output: &mut impl Write) -> Result<(), RunFailure> {
 fn run_info(args: InfoArgs, output: &mut impl Write) -> Result<(), RunFailure> {
     let source = SourceSpec::file(args.input.clone()).map_err(RunFailure::core)?;
     let options = SourceOptions::default();
-    let peak_bytes = u64::try_from(options.read_chunk_bytes)
-        .ok()
-        .and_then(|read| {
-            u64::try_from(options.max_record_bytes)
-                .ok()
-                .and_then(|record| read.checked_add(record))
-        })
-        .ok_or_else(|| RunFailure {
-            category: ErrorCategory::Internal,
-            message: "MCAP memory bound overflowed".to_owned(),
-            broken_pipe: false,
-        })?;
-    let memory = ManagedMemoryBound::checked(peak_bytes, peak_bytes).map_err(RunFailure::core)?;
-    let plan = ExecutionPlan::checked(JobSpec::info(source), memory);
+    let plan = plan_container_job(JobSpec::info(source), options)?;
 
     let file = File::open(&args.input).map_err(|source| RunFailure {
         category: ErrorCategory::Io,
@@ -240,6 +227,33 @@ fn run_info(args: InfoArgs, output: &mut impl Write) -> Result<(), RunFailure> {
     } else {
         writeln!(output, "{}", report.data()).map_err(RunFailure::output)
     }
+}
+
+fn plan_container_job(job: JobSpec, options: SourceOptions) -> Result<ExecutionPlan, RunFailure> {
+    let retained_input_bytes = u64::try_from(options.read_chunk_bytes)
+        .ok()
+        .and_then(|read| {
+            u64::try_from(options.max_record_bytes)
+                .ok()
+                .and_then(|record| read.checked_add(record))
+        })
+        .ok_or_else(|| {
+            RunFailure::core(Error::new(
+                ErrorCategory::Resource,
+                "MCAP retained-input bound overflowed",
+            ))
+        })?;
+    let requirements = PipelineMemoryRequirements::new(
+        ByteBound::bounded(retained_input_bytes),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+    );
+    Planner::new()
+        .plan(job, requirements, u64::MAX)
+        .map_err(RunFailure::core)
 }
 
 fn probe_failure(error: ProbeError) -> RunFailure {
@@ -276,20 +290,7 @@ pub fn main() -> ExitCode {
 fn run_topics(args: TopicsArgs, output: &mut impl Write) -> Result<(), RunFailure> {
     let source = SourceSpec::file(args.input.clone()).map_err(RunFailure::core)?;
     let options = SourceOptions::default();
-    let peak_bytes = u64::try_from(options.read_chunk_bytes)
-        .ok()
-        .and_then(|read| {
-            u64::try_from(options.max_record_bytes)
-                .ok()
-                .and_then(|record| read.checked_add(record))
-        })
-        .ok_or_else(|| RunFailure {
-            category: ErrorCategory::Internal,
-            message: "MCAP memory bound overflowed".to_owned(),
-            broken_pipe: false,
-        })?;
-    let memory = ManagedMemoryBound::checked(peak_bytes, peak_bytes).map_err(RunFailure::core)?;
-    let plan = ExecutionPlan::checked(JobSpec::topics(source), memory);
+    let plan = plan_container_job(JobSpec::topics(source), options)?;
 
     let file = File::open(&args.input).map_err(|source| RunFailure {
         category: ErrorCategory::Io,
@@ -319,7 +320,6 @@ fn render_topics_human(discovery: &TopicDiscovery, output: &mut impl Write) -> i
     if discovery.channels().is_empty() {
         return writeln!(output, "No Topics found.");
     }
-
     for (index, channel) in discovery.channels().iter().enumerate() {
         if index > 0 {
             writeln!(output)?;

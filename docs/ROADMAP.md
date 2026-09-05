@@ -45,7 +45,7 @@ unused because GitHub returned an error during initial backlog creation.
 - [#26 Deterministic CPU projection](https://github.com/takeshiD/pcx/issues/26)
 - [#27 Unicode rendering](https://github.com/takeshiD/pcx/issues/27)
 - [#28 Kitty graphics rendering](https://github.com/takeshiD/pcx/issues/28)
-- [#29 Capability detection and fallback](https://github.com/takeshiD/pcx/issues/29)
+- [#29 Capability detection and fallback](https://github.com/takeshiD/pcx/issues/29) — implemented policy seam
 - [#30 Sixel rendering](https://github.com/takeshiD/pcx/issues/30)
 
 ## Hardening

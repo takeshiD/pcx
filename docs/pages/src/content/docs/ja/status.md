@@ -31,7 +31,8 @@ user-facing command はまだ公開していません。
 bounded LAS/LAZ reader/writer adapter も共通 schema の背後に実装済みですが、
 user-facing command はまだ公開していません。
 
-- **Terminal rendering:** CPU rasterizer、capability selection、Unicode backend は内部実装済み。Kitty、Sixel は後続。
+- **Terminal rendering:** deterministicなCPU rasterizer、conservativeなcapability
+  selection、bounded Unicode／Kitty／Sixel backendは内部実装済み。CLI integrationは後続。
 - **Hardening:** fuzz、benchmark、musl調査、resource tuning。
 
 ## 明示的な非目標

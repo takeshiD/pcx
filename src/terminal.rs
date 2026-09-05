@@ -5,6 +5,12 @@
 //! rendering integration supplies a typed [`CapabilityQuery`] implementation;
 //! the detector bounds that implementation and keeps process streams untouched.
 
+mod sixel;
+
+pub use sixel::{
+    DEFAULT_SIXEL_LIMITS, SIXEL_ENCODER_MEMORY_BYTES, SixelError, SixelLimits, SixelPlan,
+};
+
 mod unicode;
 
 pub use unicode::{
@@ -33,6 +39,8 @@ pub enum BackendChoice {
     Auto,
     /// Kitty's terminal graphics protocol.
     Kitty,
+    /// Sixel terminal graphics protocol.
+    Sixel,
     /// Cell-based Unicode rendering.
     Unicode,
     /// Plain output without terminal control sequences.
@@ -43,6 +51,7 @@ pub enum BackendChoice {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Backend {
     Kitty,
+    Sixel,
     Unicode,
     Plain,
 }
@@ -50,7 +59,7 @@ pub enum Backend {
 impl Backend {
     /// Whether this backend may emit terminal control sequences.
     pub const fn emits_control_sequences(self) -> bool {
-        matches!(self, Self::Kitty | Self::Unicode)
+        matches!(self, Self::Kitty | Self::Sixel | Self::Unicode)
     }
 }
 
@@ -145,6 +154,7 @@ impl DetectionContext for ProcessContext {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum QueryResult {
     Kitty,
+    Sixel,
     Unsupported,
     Failed,
 }
@@ -231,6 +241,7 @@ where
     });
     let (backend, reason) = match receiver.recv_timeout(DETECTION_TIMEOUT) {
         Ok(QueryResult::Kitty) => (Backend::Kitty, SelectionReason::QueryConfirmed),
+        Ok(QueryResult::Sixel) => (Backend::Sixel, SelectionReason::QueryConfirmed),
         Ok(QueryResult::Unsupported) => (Backend::Unicode, SelectionReason::QueryUnsupported),
         Ok(QueryResult::Failed) | Err(mpsc::RecvTimeoutError::Disconnected) => {
             (Backend::Unicode, SelectionReason::QueryFailed)
@@ -244,6 +255,7 @@ const fn explicit_backend(choice: BackendChoice) -> Option<Backend> {
     match choice {
         BackendChoice::Auto => None,
         BackendChoice::Kitty => Some(Backend::Kitty),
+        BackendChoice::Sixel => Some(Backend::Sixel),
         BackendChoice::Unicode => Some(Backend::Unicode),
         BackendChoice::Plain => Some(Backend::Plain),
     }
@@ -387,16 +399,15 @@ mod tests {
     #[test]
     fn explicit_control_backend_rejects_redirected_stdout() {
         let context = FakeContext::default();
-        let error = select_backend(
-            BackendChoice::Kitty,
-            &context,
-            FakeQuery::returning(QueryResult::Kitty),
-        )
-        .unwrap_err();
-        assert_eq!(
-            error,
-            SelectionError::RedirectedControlBackend(Backend::Kitty)
-        );
+        for (choice, backend) in [
+            (BackendChoice::Kitty, Backend::Kitty),
+            (BackendChoice::Sixel, Backend::Sixel),
+            (BackendChoice::Unicode, Backend::Unicode),
+        ] {
+            let error = select_backend(choice, &context, FakeQuery::returning(QueryResult::Kitty))
+                .unwrap_err();
+            assert_eq!(error, SelectionError::RedirectedControlBackend(backend));
+        }
     }
 
     #[test]
@@ -437,6 +448,11 @@ mod tests {
             (
                 QueryResult::Kitty,
                 Backend::Kitty,
+                SelectionReason::QueryConfirmed,
+            ),
+            (
+                QueryResult::Sixel,
+                Backend::Sixel,
                 SelectionReason::QueryConfirmed,
             ),
             (

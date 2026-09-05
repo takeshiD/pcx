@@ -425,8 +425,16 @@ impl PointView {
         self.layout.schema()
     }
 
+    pub(crate) fn shared_schema(&self) -> Arc<PointSchema> {
+        Arc::clone(&self.layout.schema)
+    }
+
     pub fn metadata(&self) -> &PointFrameMetadata {
         &self.metadata
+    }
+
+    pub(crate) fn shared_metadata(&self) -> Arc<PointFrameMetadata> {
+        Arc::clone(&self.metadata)
     }
 
     pub const fn layout(&self) -> &PointLayout {
@@ -720,6 +728,10 @@ impl PointBatch {
 
     pub fn schema(&self) -> &PointSchema {
         &self.schema
+    }
+
+    pub(crate) fn shared_schema(&self) -> Arc<PointSchema> {
+        Arc::clone(&self.schema)
     }
 
     pub fn metadata(&self) -> &PointFrameMetadata {

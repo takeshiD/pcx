@@ -193,6 +193,12 @@ declares accepted schemas, whether it materializes, output schema changes,
 conservative scratch memory, ordering, and determinism. Initial post-v0.1
 operators are field selection, crop, statistics, and voxel reduction.
 
+Axis-aligned crop uses a half-open interval on every axis: a coordinate is
+retained when `min <= value < max`. Bounds must be finite and strictly
+increasing. Points with a NaN or infinity in X, Y, or Z are discarded. Crop
+preserves field order, field types and values, frame metadata, and point order;
+if the point count changes, its output is explicitly unorganized (`height = 1`).
+
 ## 11. Memory and resource policy
 
 Managed memory includes buffers and collections allocated by `pcx`. Memory maps

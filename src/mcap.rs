@@ -8,7 +8,7 @@ use std::{
     collections::BTreeMap,
     error::Error,
     fmt,
-    io::{self, Read, Seek},
+    io::{self, Read, Seek, SeekFrom},
     sync::Arc,
 };
 
@@ -18,7 +18,7 @@ use ::mcap::{
     sans_io::linear_reader::{LinearReadEvent, LinearReader, LinearReaderOptions},
 };
 
-use crate::core::ErrorCategory;
+use crate::core::{ErrorCategory, FrameSelector};
 
 const RECORD_ENVELOPE_BYTES: usize = 9;
 const ROS2_POINTCLOUD2_SCHEMA: &str = "sensor_msgs/msg/PointCloud2";
@@ -306,6 +306,91 @@ pub enum ProbeRecord {
     DataEnd,
 }
 
+/// One encoded message selected from all MCAP Channels for a Topic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectedMessage {
+    channel_id: u16,
+    sequence: u32,
+    log_time: u64,
+    publish_time: u64,
+    data: Arc<[u8]>,
+}
+
+impl SelectedMessage {
+    pub const fn channel_id(&self) -> u16 {
+        self.channel_id
+    }
+
+    pub const fn sequence(&self) -> u32 {
+        self.sequence
+    }
+
+    pub const fn log_time(&self) -> u64 {
+        self.log_time
+    }
+
+    pub const fn publish_time(&self) -> u64 {
+        self.publish_time
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+/// A typed failure to read or select one message for a Topic.
+#[derive(Debug)]
+pub enum SelectionError {
+    Probe(ProbeError),
+    TopicNotFound {
+        topic: String,
+    },
+    PointFrameNotFound {
+        topic: String,
+        selector: FrameSelector,
+    },
+}
+
+impl SelectionError {
+    /// Return the stable core failure category for process-level handling.
+    pub const fn category(&self) -> ErrorCategory {
+        match self {
+            Self::Probe(error) => error.category(),
+            Self::TopicNotFound { .. } | Self::PointFrameNotFound { .. } => ErrorCategory::NotFound,
+        }
+    }
+}
+
+impl fmt::Display for SelectionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Probe(error) => error.fmt(formatter),
+            Self::TopicNotFound { topic } => write!(formatter, "Topic {topic:?} was not found"),
+            Self::PointFrameNotFound { topic, selector } => {
+                write!(
+                    formatter,
+                    "no Point Frame for Topic {topic:?} matched {selector:?}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for SelectionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Probe(error) => Some(error),
+            Self::TopicNotFound { .. } | Self::PointFrameNotFound { .. } => None,
+        }
+    }
+}
+
+impl From<ProbeError> for SelectionError {
+    fn from(error: ProbeError) -> Self {
+        Self::Probe(error)
+    }
+}
+
 impl ProbeRecord {
     /// Logical bytes held in this record's strings, maps, and byte payload.
     pub fn retained_bytes(&self) -> usize {
@@ -549,6 +634,7 @@ pub struct Source<R> {
     input: R,
     reader: LinearReader,
     options: SourceOptions,
+    start_offset: u64,
     offset: u64,
     stats: ProbeStats,
     finished: bool,
@@ -571,6 +657,7 @@ impl<R: Read + Seek> Source<R> {
             input,
             reader: LinearReader::new_with_options(reader_options),
             options,
+            start_offset: offset,
             offset,
             stats: ProbeStats::default(),
             finished: false,
@@ -646,6 +733,175 @@ impl<R: Read + Seek> Source<R> {
         self.stats.bytes_read = self.stats.bytes_read.saturating_add(read as u64);
         self.offset = self.offset.saturating_add(read as u64);
         Ok(())
+    }
+
+    fn restart(&mut self) -> Result<(), ProbeError> {
+        self.input
+            .seek(SeekFrom::Start(self.start_offset))
+            .map_err(|source| ProbeError::Io {
+                offset: self.offset,
+                source,
+            })?;
+        self.reader = LinearReader::new_with_options(
+            LinearReaderOptions::default()
+                .with_check_finishes_after_end_magic(true)
+                .with_validate_chunk_crcs(true)
+                .with_validate_data_section_crc(true)
+                .with_validate_summary_section_crc(true)
+                .with_record_length_limit(self.options.max_record_bytes),
+        );
+        self.offset = self.start_offset;
+        self.finished = false;
+        Ok(())
+    }
+}
+
+/// Select one encoded message after matching all MCAP Channels for `topic`.
+///
+/// Index selection is a single pull pass. Time selection first discovers the
+/// recording-wide earliest log time, then restarts the seekable source and
+/// returns the first matching message at or after the requested relative time.
+/// Both passes retain only one probe record plus a fixed-size Channel-ID set.
+pub fn select_topic_message<R: Read + Seek>(
+    source: &mut Source<R>,
+    topic: &str,
+    selector: FrameSelector,
+) -> Result<SelectedMessage, SelectionError> {
+    source.restart()?;
+    match selector {
+        FrameSelector::Index(index) => select_by_index(source, topic, index, selector),
+        FrameSelector::At(duration) => {
+            let (topic_found, recording_start) = discover_recording_start(source, topic)?;
+            if !topic_found {
+                return Err(SelectionError::TopicNotFound {
+                    topic: topic.to_owned(),
+                });
+            }
+            let Some(relative_nanos) = u64::try_from(duration.as_nanos()).ok() else {
+                return Err(point_frame_not_found(topic, selector));
+            };
+            let Some(threshold) =
+                recording_start.and_then(|start| start.checked_add(relative_nanos))
+            else {
+                return Err(point_frame_not_found(topic, selector));
+            };
+            source.restart()?;
+            select_at_or_after(source, topic, threshold, selector)
+        }
+    }
+}
+
+fn select_by_index<R: Read + Seek>(
+    source: &mut Source<R>,
+    topic: &str,
+    index: u64,
+    selector: FrameSelector,
+) -> Result<SelectedMessage, SelectionError> {
+    let mut matching_channels = vec![false; usize::from(u16::MAX) + 1];
+    let mut topic_found = false;
+    let mut matching_index = 0_u64;
+    while let Some(record) = source.next_probe()? {
+        match record {
+            ProbeRecord::Channel {
+                id,
+                topic: channel_topic,
+                ..
+            } => {
+                let matches = channel_topic == topic;
+                matching_channels[usize::from(id)] = matches;
+                topic_found |= matches;
+            }
+            ProbeRecord::Message {
+                channel_id,
+                sequence,
+                log_time,
+                publish_time,
+                data,
+            } if matching_channels[usize::from(channel_id)] => {
+                if matching_index == index {
+                    return Ok(SelectedMessage {
+                        channel_id,
+                        sequence,
+                        log_time,
+                        publish_time,
+                        data,
+                    });
+                }
+                matching_index = matching_index.saturating_add(1);
+            }
+            _ => {}
+        }
+    }
+    if topic_found {
+        Err(point_frame_not_found(topic, selector))
+    } else {
+        Err(SelectionError::TopicNotFound {
+            topic: topic.to_owned(),
+        })
+    }
+}
+
+fn discover_recording_start<R: Read + Seek>(
+    source: &mut Source<R>,
+    topic: &str,
+) -> Result<(bool, Option<u64>), ProbeError> {
+    let mut topic_found = false;
+    let mut recording_start: Option<u64> = None;
+    while let Some(record) = source.next_probe()? {
+        match record {
+            ProbeRecord::Channel {
+                topic: channel_topic,
+                ..
+            } => topic_found |= channel_topic == topic,
+            ProbeRecord::Message { log_time, .. } => {
+                recording_start =
+                    Some(recording_start.map_or(log_time, |start| start.min(log_time)));
+            }
+            _ => {}
+        }
+    }
+    Ok((topic_found, recording_start))
+}
+
+fn select_at_or_after<R: Read + Seek>(
+    source: &mut Source<R>,
+    topic: &str,
+    threshold: u64,
+    selector: FrameSelector,
+) -> Result<SelectedMessage, SelectionError> {
+    let mut matching_channels = vec![false; usize::from(u16::MAX) + 1];
+    while let Some(record) = source.next_probe()? {
+        match record {
+            ProbeRecord::Channel {
+                id,
+                topic: channel_topic,
+                ..
+            } => matching_channels[usize::from(id)] = channel_topic == topic,
+            ProbeRecord::Message {
+                channel_id,
+                sequence,
+                log_time,
+                publish_time,
+                data,
+            } if matching_channels[usize::from(channel_id)] && log_time >= threshold => {
+                return Ok(SelectedMessage {
+                    channel_id,
+                    sequence,
+                    log_time,
+                    publish_time,
+                    data,
+                });
+            }
+            _ => {}
+        }
+    }
+    Err(point_frame_not_found(topic, selector))
+}
+
+fn point_frame_not_found(topic: &str, selector: FrameSelector) -> SelectionError {
+    SelectionError::PointFrameNotFound {
+        topic: topic.to_owned(),
+        selector,
     }
 }
 

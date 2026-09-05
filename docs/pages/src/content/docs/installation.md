@@ -3,9 +3,12 @@ title: Installation
 description: Current source and Nix installation paths.
 ---
 
-:::caution[Foundation stage]
-The first crates.io release has not happened. `cargo install pcx-cli` is the accepted future command, not a current availability claim.
-:::
+## From crates.io
+
+```bash
+cargo install pcx-cli
+pcx --version
+```
 
 ## From source
 

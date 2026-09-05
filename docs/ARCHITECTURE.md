@@ -203,6 +203,12 @@ Supported systems are `x86_64-linux` and `aarch64-linux`, both tested natively. 
 
 Inputs are untrusted. Every length and offset is checked before allocation or slicing. The tool opens no network listener, starts no browser, loads no dynamic plugin, and holds no cloud credential. Terminal rendering must not emit escape graphics to redirected stdout.
 
+Terminal backend selection is isolated from rendering and follows the
+conservative policy documented in [`TERMINAL.md`](./TERMINAL.md). Automatic
+detection never queries non-TTY stdout, bounds an injected capability query to
+100 ms, and treats environment values as opaque data rather than control
+sequence fragments.
+
 ## Decision records
 
 The rationale behind hard-to-reverse choices is recorded in [`docs/adr`](./adr/README.md).

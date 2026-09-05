@@ -28,6 +28,11 @@ Fast, deterministic tests live beside their modules.
 
 Integration tests compose real adapters through internal interfaces. Core tests use fake sources and sinks so format dependencies cannot leak into the Planner.
 
+Terminal selection tests inject environment variables, stdin/stdout TTY state,
+and typed capability-query results. They do not alter terminal modes or emit
+real control sequences. Coverage includes query timeout, SSH, tmux, missing
+`TERM`, hostile environment bytes, and redirected stdout.
+
 ### CLI contract tests
 
 The compiled process is exercised for:

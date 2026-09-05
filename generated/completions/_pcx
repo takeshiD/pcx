@@ -1,0 +1,190 @@
+#compdef pcx
+
+autoload -U is-at-least
+
+_pcx() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+":: :_pcx_commands" \
+"*::: :->pcx" \
+&& ret=0
+    case $state in
+    (pcx)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:pcx-command-$line[1]:"
+        case $line[1] in
+            (info)
+_arguments "${_arguments_options[@]}" : \
+'--json[Print versioned JSON instead of human-readable text]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':input -- MCAP Source to inspect:_files' \
+&& ret=0
+;;
+(topics)
+_arguments "${_arguments_options[@]}" : \
+'--json[Print versioned JSON instead of human-readable text]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':input -- MCAP Source to inspect:_files' \
+&& ret=0
+;;
+(extract)
+_arguments "${_arguments_options[@]}" : \
+'--topic=[Topic whose messages are counted as Point Frames]:TOPIC:_default' \
+'--frame=[Zero-based Point Frame index after Topic selection]:INDEX:_default' \
+'--at=[First Point Frame at or after this duration from recording start]:DURATION:_default' \
+'-o+[Output PCD path, or '\''-'\'' for binary-safe stdout]:PATH|-:_files' \
+'--output=[Output PCD path, or '\''-'\'' for binary-safe stdout]:PATH|-:_files' \
+'--encoding=[PCD payload representation]:ENCODING:(binary ascii)' \
+'--memory-limit=[Hard managed-memory limit in bytes]:BYTES:_default' \
+'--force[Replace an existing output file]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':input -- MCAP Source containing the Point Frame:_files' \
+&& ret=0
+;;
+(passthrough)
+_arguments "${_arguments_options[@]}" : \
+'--topic=[Topic whose encoded messages are selected]:TOPIC:_default' \
+'--frame=[Zero-based message index after Topic selection]:INDEX:_default' \
+'--at=[First message at or after this duration from recording start]:DURATION:_default' \
+'-o+[Output MCAP path, or '\''-'\'' for binary-safe stdout]:PATH|-:_files' \
+'--output=[Output MCAP path, or '\''-'\'' for binary-safe stdout]:PATH|-:_files' \
+'--compression=[Deterministic output chunk compression]:COMPRESSION:(none zstd lz4)' \
+'--memory-limit=[Hard managed-memory limit in bytes]:BYTES:_default' \
+'--force[Replace an existing output file]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':input -- MCAP Source containing the encoded message:_files' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_pcx__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:pcx-help-command-$line[1]:"
+        case $line[1] in
+            (info)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(topics)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(extract)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(passthrough)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_pcx_commands] )) ||
+_pcx_commands() {
+    local commands; commands=(
+'info:Show MCAP container metadata without decoding point frames' \
+'topics:Discover Topics, MCAP Channels, Schemas, and message counts' \
+'extract:Extract exactly one ROS 2 PointCloud2 Point Frame as PCD' \
+'passthrough:Copy one selected encoded message into a faithful reduced MCAP' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'pcx commands' commands "$@"
+}
+(( $+functions[_pcx__extract_commands] )) ||
+_pcx__extract_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx extract commands' commands "$@"
+}
+(( $+functions[_pcx__help_commands] )) ||
+_pcx__help_commands() {
+    local commands; commands=(
+'info:Show MCAP container metadata without decoding point frames' \
+'topics:Discover Topics, MCAP Channels, Schemas, and message counts' \
+'extract:Extract exactly one ROS 2 PointCloud2 Point Frame as PCD' \
+'passthrough:Copy one selected encoded message into a faithful reduced MCAP' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'pcx help commands' commands "$@"
+}
+(( $+functions[_pcx__help__extract_commands] )) ||
+_pcx__help__extract_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx help extract commands' commands "$@"
+}
+(( $+functions[_pcx__help__help_commands] )) ||
+_pcx__help__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx help help commands' commands "$@"
+}
+(( $+functions[_pcx__help__info_commands] )) ||
+_pcx__help__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx help info commands' commands "$@"
+}
+(( $+functions[_pcx__help__passthrough_commands] )) ||
+_pcx__help__passthrough_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx help passthrough commands' commands "$@"
+}
+(( $+functions[_pcx__help__topics_commands] )) ||
+_pcx__help__topics_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx help topics commands' commands "$@"
+}
+(( $+functions[_pcx__info_commands] )) ||
+_pcx__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx info commands' commands "$@"
+}
+(( $+functions[_pcx__passthrough_commands] )) ||
+_pcx__passthrough_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx passthrough commands' commands "$@"
+}
+(( $+functions[_pcx__topics_commands] )) ||
+_pcx__topics_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx topics commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_pcx" ]; then
+    _pcx "$@"
+else
+    compdef _pcx pcx
+fi

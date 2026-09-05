@@ -8,11 +8,15 @@ repository = "https://github.com/takeshiD/pcx"
 homepage = "https://takeshid.github.io/pcx/"
 license = "MIT"
 include = [
+    "/.github/release/README.md",
     "/Cargo.toml",
     "/Cargo.lock",
     "/LICENSE",
     "/README.md",
     "/README.ja.md",
+    "/examples/**",
+    "/generated/**",
+    "/scripts/**",
     "/src/**",
     "/tests/**",
 ]
@@ -38,4 +42,6 @@ signal-hook = "0.3"
 zstd = { version = "0.13", default-features = false }
 
 [dev-dependencies]
+clap_complete = "=4.5.58"
+clap_mangen = "=0.2.29"
 proptest = "1.9"

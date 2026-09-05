@@ -130,6 +130,14 @@ pub struct Cli {
     command: Option<Command>,
 }
 
+/// Build the implemented command grammar for generated help assets.
+///
+/// Shell completions and manual pages call this same constructor, so they
+/// cannot advertise commands or options that are absent from the parser.
+pub fn command() -> clap::Command {
+    Cli::command()
+}
+
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Show MCAP container metadata without decoding point frames.
@@ -319,9 +327,7 @@ fn run(cli: Cli, output: &mut impl Write) -> Result<(), RunFailure> {
         Some(Command::Extract(args)) => run_extract(args),
         Some(Command::Passthrough(args)) => run_passthrough(args),
         None => {
-            Cli::command()
-                .write_help(output)
-                .map_err(RunFailure::output)?;
+            command().write_help(output).map_err(RunFailure::output)?;
             writeln!(output).map_err(RunFailure::output)
         }
     }

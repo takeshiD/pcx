@@ -59,6 +59,11 @@ nix run github:takeshiD/pcx -- --version
 nix develop github:takeshiD/pcx
 ```
 
+The Nix package and Linux release archives include Bash, Zsh, and Fish
+completions plus manual pages. See the
+[installation guide](https://takeshid.github.io/pcx/installation/) for their
+locations and regeneration workflow.
+
 ## v0.1 workflow
 
 MCAP metadata inspection, Topic discovery, and one-frame extraction are available now.

@@ -1,0 +1,33 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH pcx 1  "pcx 0.1.1"
+.SH NAME
+pcx \- Inspect and reduce point\-cloud recordings on edge Linux systems
+.SH SYNOPSIS
+\fBpcx\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIsubcommands\fR]
+.SH DESCRIPTION
+Inspect and reduce point\-cloud recordings on edge Linux systems.
+.PP
+Inspect MCAP metadata and Topics, extract one ROS 2 PointCloud2 frame to PCD, or copy one selected encoded message into a reduced MCAP.
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+pcx\-info(1)
+Show MCAP container metadata without decoding point frames
+.TP
+pcx\-topics(1)
+Discover Topics, MCAP Channels, Schemas, and message counts
+.TP
+pcx\-extract(1)
+Extract exactly one ROS 2 PointCloud2 Point Frame as PCD
+.TP
+pcx\-passthrough(1)
+Copy one selected encoded message into a faithful reduced MCAP
+.SH VERSION
+v0.1.1

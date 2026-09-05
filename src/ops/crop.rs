@@ -778,7 +778,7 @@ mod tests {
         assert_frame_local_contract(ContractTestCase {
             contract: AxisAlignedCrop::contract(),
             accepted_schema: accepted,
-            rejected_schema: rejected,
+            rejected_schema: Some(rejected),
             dimensions: PointDimensions::new(3, 2).unwrap(),
             input_representation: PointRepresentation::View,
             authorized_losses: &[FidelityLoss::PointSelection],

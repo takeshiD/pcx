@@ -332,11 +332,11 @@ mod tests {
         assert_frame_local_contract(ContractTestCase {
             contract: selection.contract(),
             accepted_schema: schema(accepted_fields),
-            rejected_schema: schema({
+            rejected_schema: Some(schema({
                 let mut fields = xyz_fields();
                 fields.pop();
                 fields
-            }),
+            })),
             dimensions: PointDimensions::new(8, 2).unwrap(),
             input_representation: PointRepresentation::Columns,
             authorized_losses: &[FidelityLoss::FieldSelection],

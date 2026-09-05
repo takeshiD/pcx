@@ -17,6 +17,10 @@ install -Dm644 "$scratch/corpus/valid/pointcloud2-little-endian.cdr" \
   "$fixture_root/valid/pointcloud2-little-endian.cdr"
 install -Dm644 "$scratch/corpus/valid/pointcloud2-big-endian.cdr" \
   "$fixture_root/valid/pointcloud2-big-endian.cdr"
+install -Dm644 "$scratch/corpus/valid/pointcloud2-organized-row-padding.cdr" \
+  "$fixture_root/valid/pointcloud2-organized-row-padding.cdr"
+install -Dm644 "$scratch/corpus/valid/pointcloud2-reordered-fields-and-count.cdr" \
+  "$fixture_root/valid/pointcloud2-reordered-fields-and-count.cdr"
 install -Dm644 "$scratch/corpus/valid/pointcloud2-binary.pcd" \
   "$fixture_root/valid/pointcloud2-binary.pcd"
 install -Dm644 "$scratch/corpus/valid/pointcloud2-ascii.pcd" \
@@ -32,6 +36,20 @@ install -Dm644 \
 install -Dm644 \
   "$scratch/corpus/malformed/pointcloud2-field-must-fit-point-step.cdr" \
   "$fixture_root/malformed/pointcloud2-field-must-fit-point-step.cdr"
+for fixture in \
+  pointcloud2-field-names-must-be-unique.cdr \
+  pointcloud2-field-ranges-must-not-overlap.cdr \
+  pointcloud2-field-count-must-be-positive.cdr \
+  pointcloud2-field-datatype-must-be-supported.cdr \
+  pointcloud2-row-step-must-cover-row.cdr \
+  pointcloud2-data-length-must-equal-height-times-row-step.cdr \
+  pointcloud2-timestamp-nanoseconds-must-be-canonical.cdr \
+  pointcloud2-height-must-be-positive.cdr \
+  pointcloud2-point-step-must-be-positive.cdr
+do
+  install -Dm644 "$scratch/corpus/malformed/$fixture" \
+    "$fixture_root/malformed/$fixture"
+done
 install -Dm644 \
   "$scratch/corpus/malformed/pcd-points-must-equal-width-times-height.pcd" \
   "$fixture_root/malformed/pcd-points-must-equal-width-times-height.pcd"

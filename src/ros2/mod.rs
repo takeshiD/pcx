@@ -4,3 +4,4 @@
 //! ROS 2 adapters in this crate. It is not a dynamic ROS message decoder.
 
 pub mod cdr;
+pub mod pointcloud2;

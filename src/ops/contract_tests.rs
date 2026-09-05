@@ -10,10 +10,12 @@ use crate::core::{
 };
 
 /// Inputs and expected guarantees shared by field/crop/stats/voxel tests.
+///
+/// Operators which accept every valid schema omit `rejected_schema`.
 pub(crate) struct ContractTestCase<'a> {
     pub contract: OperatorContract,
     pub accepted_schema: Arc<PointSchema>,
-    pub rejected_schema: Arc<PointSchema>,
+    pub rejected_schema: Option<Arc<PointSchema>>,
     pub dimensions: PointDimensions,
     pub input_representation: PointRepresentation,
     pub authorized_losses: &'a [FidelityLoss],
@@ -63,16 +65,18 @@ pub(crate) fn assert_frame_local_contract(case: ContractTestCase<'_>) {
     assert_eq!(case.contract.output().metadata(), MetadataEffect::Preserve);
     assert_eq!(case.contract.output().values(), ValueEffect::Preserve);
 
-    let schema_error = Planner::new()
-        .validate_operators(
-            Arc::clone(&case.rejected_schema),
-            case.dimensions,
-            case.input_representation,
-            std::slice::from_ref(&case.contract),
-            &LossPolicy::authorize(case.authorized_losses.iter().copied()),
-        )
-        .expect_err("documented incompatible schema must fail during planning");
-    assert_eq!(schema_error.category(), ErrorCategory::Unsupported);
+    if let Some(rejected_schema) = &case.rejected_schema {
+        let schema_error = Planner::new()
+            .validate_operators(
+                Arc::clone(rejected_schema),
+                case.dimensions,
+                case.input_representation,
+                std::slice::from_ref(&case.contract),
+                &LossPolicy::authorize(case.authorized_losses.iter().copied()),
+            )
+            .expect_err("documented incompatible schema must fail during planning");
+        assert_eq!(schema_error.category(), ErrorCategory::Unsupported);
+    }
 
     if !case.authorized_losses.is_empty() {
         let loss_error = plan(&case, LossPolicy::lossless())
@@ -162,10 +166,10 @@ mod tests {
         assert_frame_local_contract(ContractTestCase {
             contract: crop_contract(),
             accepted_schema: xyz_schema(),
-            rejected_schema: schema(vec![
+            rejected_schema: Some(schema(vec![
                 PointField::new("x", PrimitiveType::F32, 1, Some(PointFieldSemantic::X)).unwrap(),
                 PointField::new("y", PrimitiveType::F32, 1, Some(PointFieldSemantic::Y)).unwrap(),
-            ]),
+            ])),
             dimensions: PointDimensions::new(10, 2).unwrap(),
             input_representation: PointRepresentation::View,
             authorized_losses: &[FidelityLoss::PointSelection],

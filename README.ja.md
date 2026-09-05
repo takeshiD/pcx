@@ -26,7 +26,8 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 | ROS 2 `PointCloud2` frame抽出 | 利用可能 |
 | binary／ASCII PCD出力 | 利用可能 |
 | crop、field選択、frame単位voxel | 計画中 |
-| PLY、LAS/LAZ、terminal rendering | 計画中 |
+| PLY scalar-vertex adapter（CLI integration は今後） | 内部で利用可能 |
+| LAS/LAZ、terminal rendering | 計画中 |
 | AWS/S3 upload、cloud credential | 対象外 |
 | macOS／Windows | 将来候補・時期未定 |
 

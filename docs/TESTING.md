@@ -16,6 +16,7 @@ Fast, deterministic tests live beside their modules.
 - `mcap`: Channel/Schema association, log times, chunk boundaries, truncation, CRC failures, payload preservation.
 - `ros2`: CDR alignment, endian markers, sequence lengths, PointField counts and offsets, organized rows, malformed extents.
 - `pcd`: headers, binary/ASCII values, arbitrary fields, non-finite values, deterministic formatting.
+- `ply`: bounded headers, both binary byte orders, ASCII values, arbitrary scalar properties, fidelity refusals.
 - `ops`: boundaries and invariants for every semantic operator.
 
 ### Property tests
@@ -100,6 +101,14 @@ Minimum MCAP cases:
 - missing summary;
 - zstd/LZ4 decompression failure;
 - PointCloud2 Channel whose payload uses the wrong encoding.
+
+Minimum PLY cases:
+
+- ASCII, little-endian binary, and big-endian binary scalar vertices;
+- unknown scalar properties and source order;
+- list properties, unsupported scalar types, and non-vertex elements;
+- truncated and trailing payloads;
+- materialization refusal before column allocation.
 
 ## Resource tests
 

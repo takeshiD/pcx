@@ -1,13 +1,13 @@
 # Parser and end-to-end fixtures
 
 This directory contains the minimal synthetic format corpus established by
-issue #15 and extended with strict PointCloud2 cases for issue #9. It is test
-data only: the generator does not parse inputs and does not implement any `pcx`
-product adapter.
+issue #15, extended with strict PointCloud2 cases for issue #9 and scalar PLY
+cases for issue #24. It is test data only: the generator does not parse inputs
+and does not implement any `pcx` product adapter.
 
 ## Reproduction
 
-Generator version: `pcx-fixture-generator/1.1.0`, compiled with the repository's
+Generator version: `pcx-fixture-generator/1.2.0`, compiled with the repository's
 pinned Rust 1.97.1 toolchain. The container rewrite uses `mcap-cli 0.0.61`
 (`mcap go v1.8.0`).
 
@@ -18,8 +18,8 @@ MCAP CLI version 0.0.61 from Nixpkgs:
 nix develop --command bash tests/fixtures/generate.sh
 ```
 
-The Rust generator emits deterministic synthetic CDR/PointCloud2 and PCD bytes
-plus a minimal raw MCAP seed. `mcap recover --compression zstd` rewrites that
+The Rust generator emits deterministic synthetic CDR/PointCloud2, PCD, and PLY
+bytes plus a minimal raw MCAP seed. `mcap recover --compression zstd` rewrites that
 seed through the official MCAP implementation. `SHA256SUMS` is regenerated
 last. Repeating the command must leave the worktree unchanged.
 
@@ -34,7 +34,7 @@ derived from `common_interfaces/sensor_msgs`, licensed Apache-2.0.
 
 The encodings follow the MCAP v0 specification, ROS 2
 `sensor_msgs/msg/PointCloud2` and `sensor_msgs/msg/PointField` definitions,
-OMG CDR representation identifiers/alignment, and PCD v0.7. The valid MCAP is
+OMG CDR representation identifiers/alignment, PCD v0.7, and PLY 1.0. The valid MCAP is
 produced outside `pcx` by the official `mcap` CLI, providing the independent
 interoperability fixture required by the test strategy.
 
@@ -45,6 +45,7 @@ Primary format references:
 - [ROS 2 `sensor_msgs` package license](https://raw.githubusercontent.com/ros2/common_interfaces/humble/sensor_msgs/package.xml)
 - [OMG DDS-XTypes 1.3](https://www.omg.org/spec/DDS-XTypes/1.3/About-DDS-XTypes/)
 - [PCD v0.7 format](https://pointclouds.org/documentation/tutorials/pcd_file_format.html)
+- [PLY format description](https://paulbourke.net/dataformats/ply/)
 
 ## Valid corpus and oracle checks
 
@@ -68,6 +69,15 @@ frame `map`, with two points and these ordered Point Fields:
 | `valid/pointcloud2-reordered-fields-and-count.cdr` | Generator 1.1.0 | Strict decode preserves source field order and a two-element `uint8` field, and exercises every supported PointField datatype |
 | `valid/pointcloud2-binary.pcd` | Generator 1.0.0 | Reviewed PCD v0.7 header; independently decoded 32-byte binary body matches the value bits above |
 | `valid/pointcloud2-ascii.pcd` | Generator 1.0.0 | Reviewed PCD v0.7 header and two rows; semantic values match above (NaN payload is intentionally not preserved in ASCII) |
+| `valid/scalar-vertices-ascii.ply` | Generator 1.2.0 | Reviewed PLY 1.0 header and independently tokenized rows exercise all eight supported scalar types and unknown property order |
+| `valid/scalar-vertices-binary-little-endian.ply` | Generator 1.2.0 | Independent offset decoder verifies a 26-byte vertex record and little-endian scalar bits |
+| `valid/scalar-vertices-binary-big-endian.ply` | Generator 1.2.0 | Independent offset decoder verifies the same values with big-endian scalar bits |
+
+The PLY fixtures contain two unorganized vertices and these ordered scalar
+properties: `signed_byte`, `unsigned_byte`, `signed_short`, `unsigned_short`,
+`signed_int`, `unsigned_int`, `x`, and `time`. They cover signed and unsigned
+8-, 16-, and 32-bit integers, binary32, binary64, numeric boundaries, and
+negative zero. Their property names and order are part of the oracle.
 
 The MCAP message has sequence `0` and log/publish time
 `1700000000123456789` ns. Its payload must be byte-identical to
@@ -94,6 +104,11 @@ the exact error wording is not a golden interface.
 | `malformed/pointcloud2-height-must-be-positive.cdr` | PointCloud2 height must be positive | PointCloud2 validation rejects `height=0` |
 | `malformed/pointcloud2-point-step-must-be-positive.cdr` | A nonempty cloud must have a positive `point_step` | PointCloud2 validation rejects `point_step=0` when `width * height` is nonzero |
 | `malformed/pcd-points-must-equal-width-times-height.pcd` | `POINTS` must equal `WIDTH * HEIGHT` | PCD header validation rejects `POINTS=1`, `WIDTH=2`, `HEIGHT=1` |
+| `malformed/ply-list-properties-are-unsupported.ply` | The faithful subset accepts scalar vertex properties only | PLY header validation rejects the list before materialization |
+| `malformed/ply-int64-properties-are-unsupported.ply` | PLY 1.0 has no supported lossless 64-bit integer mapping | PLY header validation rejects `int64` |
+| `malformed/ply-format-endianness-must-be-known.ply` | The format must declare ASCII, little-endian binary, or big-endian binary | PLY header validation rejects an unknown byte order |
+| `malformed/ply-non-vertex-elements-are-lossy.ply` | Faces and other elements cannot be represented by the point schema | PLY header validation rejects the element instead of dropping it |
+| `malformed/ply-binary-payload-must-not-be-truncated.ply` | Every declared scalar for every vertex must be present | PLY payload decoding reports truncation |
 
 ## Review commands
 

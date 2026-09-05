@@ -21,16 +21,18 @@ src/
 ├── mcap/          MCAP container adapter
 ├── ros2/          strict CDR and PointCloud2 adapter
 ├── pcd/           PCD reader/writer adapter
+├── ply/           faithful scalar-vertex PLY adapter
 └── ops/           semantic point operators
 ```
 
 Allowed dependencies:
 
 ```text
-cli  -> core, mcap, ros2, pcd, ops
+cli  -> core, mcap, ros2, pcd, ply, ops
 mcap -> core
 ros2 -> core
 pcd  -> core
+ply  -> core
 ops  -> core
 core -> standard library and domain-focused utilities only
 ```

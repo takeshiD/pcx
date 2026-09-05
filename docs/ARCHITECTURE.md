@@ -150,6 +150,11 @@ Only the ROS 2 CDR shape required for `sensor_msgs/msg/PointCloud2` is decoded i
 
 Semantic operators on temporal input apply independently to each Point Frame unless a future explicit accumulation operation is selected.
 
+Terminal-neutral CPU projection is also frame-local. Its axis-aligned camera,
+fitted-bounds, z-buffer, color, numeric-determinism, and memory contracts are
+specified in [`PROJECTION.md`](./PROJECTION.md). Terminal protocols and
+capability detection remain separate downstream concerns.
+
 ## Fidelity contract
 
 The Planner compares source, operator, encoder, and sink capabilities. A job is rejected when the requested output cannot represent retained fields or temporal/spatial metadata. Loss requires an explicit category-specific authorization; generic warning-only loss is not accepted.

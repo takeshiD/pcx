@@ -15,7 +15,7 @@ use crate::{
         Error, ErrorCategory, ExecutionPlan, ExecutionReport, JobSpec, ManagedMemoryBound,
         SourceSpec,
     },
-    mcap::{self, ProbeError, SourceOptions},
+    mcap::{self, DiscoveredChannel, ProbeError, SourceOptions, TopicDiscovery},
 };
 
 /// Process statuses assigned to structured core failure categories.
@@ -66,7 +66,7 @@ impl ExitStatus {
     name = "pcx",
     version,
     about = "Inspect and reduce point-cloud recordings on edge Linux systems",
-    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nThe current release can inspect MCAP container metadata with `pcx info`."
+    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nThe current release can inspect MCAP container metadata with `pcx info` and discover Topics, Channels, Schemas, and message counts with `pcx topics`."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -77,10 +77,23 @@ pub struct Cli {
 enum Command {
     /// Show MCAP container metadata without decoding point frames.
     Info(InfoArgs),
+    /// Discover Topics, MCAP Channels, Schemas, and message counts.
+    Topics(TopicsArgs),
 }
 
 #[derive(Debug, Args)]
 struct InfoArgs {
+    /// MCAP Source to inspect.
+    #[arg(value_name = "INPUT.mcap")]
+    input: PathBuf,
+
+    /// Print versioned JSON instead of human-readable text.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct TopicsArgs {
     /// MCAP Source to inspect.
     #[arg(value_name = "INPUT.mcap")]
     input: PathBuf,
@@ -127,6 +140,7 @@ impl RunFailure {
 fn run(cli: Cli, output: &mut impl Write) -> Result<(), RunFailure> {
     match cli.command {
         Some(Command::Info(args)) => run_info(args, output),
+        Some(Command::Topics(args)) => run_topics(args, output),
         None => {
             Cli::command()
                 .write_help(output)
@@ -179,13 +193,8 @@ fn run_info(args: InfoArgs, output: &mut impl Write) -> Result<(), RunFailure> {
 }
 
 fn probe_failure(error: ProbeError) -> RunFailure {
-    let category = match error {
-        ProbeError::Io { .. } => ErrorCategory::Io,
-        ProbeError::Reader { .. } | ProbeError::Parse { .. } => ErrorCategory::InvalidData,
-        ProbeError::InvalidOptions(_) => ErrorCategory::Internal,
-    };
     RunFailure {
-        category,
+        category: error.category(),
         message: error.to_string(),
         broken_pipe: false,
     }
@@ -214,6 +223,91 @@ pub fn main() -> ExitCode {
     }
 }
 
+fn run_topics(args: TopicsArgs, output: &mut impl Write) -> Result<(), RunFailure> {
+    let source = SourceSpec::file(args.input.clone()).map_err(RunFailure::core)?;
+    let options = SourceOptions::default();
+    let peak_bytes = u64::try_from(options.read_chunk_bytes)
+        .ok()
+        .and_then(|read| {
+            u64::try_from(options.max_record_bytes)
+                .ok()
+                .and_then(|record| read.checked_add(record))
+        })
+        .ok_or_else(|| RunFailure {
+            category: ErrorCategory::Internal,
+            message: "MCAP memory bound overflowed".to_owned(),
+            broken_pipe: false,
+        })?;
+    let memory = ManagedMemoryBound::checked(peak_bytes, peak_bytes).map_err(RunFailure::core)?;
+    let plan = ExecutionPlan::checked(JobSpec::topics(source), memory);
+
+    let file = File::open(&args.input).map_err(|source| RunFailure {
+        category: ErrorCategory::Io,
+        message: format!("failed to open Source '{}': {source}", args.input.display()),
+        broken_pipe: false,
+    })?;
+    let discovery = mcap::discover_topics(file, options).map_err(probe_failure)?;
+    let report = ExecutionReport::success(&plan, discovery);
+
+    if args.json {
+        serde_json::to_writer_pretty(&mut *output, &report).map_err(|error| RunFailure {
+            category: if error.is_io() {
+                ErrorCategory::Io
+            } else {
+                ErrorCategory::Internal
+            },
+            message: format!("failed to write JSON output: {error}"),
+            broken_pipe: error.io_error_kind() == Some(io::ErrorKind::BrokenPipe),
+        })?;
+        writeln!(output).map_err(RunFailure::output)
+    } else {
+        render_topics_human(report.data(), output).map_err(RunFailure::output)
+    }
+}
+
+fn render_topics_human(discovery: &TopicDiscovery, output: &mut impl Write) -> io::Result<()> {
+    if discovery.channels().is_empty() {
+        return writeln!(output, "No Topics found.");
+    }
+
+    for (index, channel) in discovery.channels().iter().enumerate() {
+        if index > 0 {
+            writeln!(output)?;
+        }
+        render_channel(channel, output)?;
+    }
+    writeln!(
+        output,
+        "\nPointCloud2 candidate status is based on declared Schema and encoding metadata; message payloads were not decoded."
+    )
+}
+
+fn render_channel(channel: &DiscoveredChannel, output: &mut impl Write) -> io::Result<()> {
+    writeln!(output, "Topic: {}", channel.topic)?;
+    writeln!(output, "  MCAP Channel ID: {}", channel.channel_id)?;
+    writeln!(output, "  Messages: {}", channel.message_count)?;
+    writeln!(output, "  Message encoding: {}", channel.message_encoding)?;
+    match &channel.schema {
+        Some(schema) => {
+            writeln!(output, "  MCAP Schema ID: {}", schema.id)?;
+            writeln!(output, "  Schema: {}", schema.name)?;
+            writeln!(output, "  Schema encoding: {}", schema.encoding)?;
+        }
+        None => {
+            writeln!(output, "  MCAP Schema: none")?;
+        }
+    }
+    writeln!(
+        output,
+        "  ROS 2 PointCloud2 candidate: {}",
+        if channel.ros2_pointcloud2_candidate {
+            "yes"
+        } else {
+            "no"
+        }
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -235,6 +329,12 @@ mod tests {
     fn accepts_info_human_and_json_forms() {
         assert!(try_run_from(["pcx", "info", "recording.mcap"]).is_ok());
         assert!(try_run_from(["pcx", "info", "recording.mcap", "--json"]).is_ok());
+    }
+
+    #[test]
+    fn accepts_topics_human_and_json_forms() {
+        assert!(try_run_from(["pcx", "topics", "recording.mcap"]).is_ok());
+        assert!(try_run_from(["pcx", "topics", "recording.mcap", "--json"]).is_ok());
     }
 
     #[test]

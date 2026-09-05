@@ -9,14 +9,16 @@ description: 現在の機能と合意済み v0.1 インターフェース。
 pcx --help
 pcx --version
 pcx info INPUT.mcap [--json]
+pcx topics INPUT.mcap [--json]
 ```
 
 `pcx info`はPoint FrameをdecodeせずにMCAP Sourceをstreamingで調査します。human outputとversion付きJSONはstdoutへ出力され、成功時のstderrは空です。
 
+`pcx topics`は各MCAP Channelについて、user-facingなTopic、Schema、encoding、message count、metadataに基づくROS 2 PointCloud2 candidate statusを表示します。candidate statusはmessage payloadのdecodeやvalidation成功を意味しません。
+
 ## v0.1 で実装予定
 
 ```bash
-pcx topics INPUT.mcap [--json]
 pcx extract INPUT.mcap --topic TOPIC --frame INDEX [-o OUTPUT.pcd]
 ```
 

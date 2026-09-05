@@ -234,7 +234,13 @@ Within a schema version, changes are additive only. Removing a field or changing
 
 ## Platform and dependency policy
 
-Supported systems are `x86_64-linux` and `aarch64-linux`, both tested natively. Prefer pure Rust dependencies, rustls, and no runtime dynamic-library requirements. zstd/LZ4 build complexity is accepted because compressed MCAP is essential; Nix and release checks must prove both target builds.
+Supported systems are `x86_64-linux` and `aarch64-linux`, both tested natively.
+Release archives remain GNU-linked under
+[ADR-0015](./adr/0015-keep-gnu-linux-release-artifacts.md); cross-built or
+emulated static musl candidates are not supported artifacts. Prefer pure Rust
+dependencies, rustls, and no non-system runtime dynamic-library requirements.
+zstd/LZ4 build complexity is accepted because compressed MCAP is essential;
+Nix and release checks must prove both target builds.
 
 ## Security boundary
 

@@ -1,8 +1,11 @@
 //! Frame-local point operators.
 //!
-//! Concrete field, crop, statistics, and voxel operators are intentionally not
-//! implemented here yet. They will declare their behavior through the shared
-//! contracts in [`crate::core`].
+//! Operators declare their behavior through the shared contracts in
+//! [`crate::core`] before touching point values.
+
+mod field_selection;
+
+pub use field_selection::{FieldSelection, FieldSelectionPlan, FieldSelectionResult, SchemaChange};
 
 #[cfg(test)]
 pub(crate) mod contract_tests;

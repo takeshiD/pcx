@@ -726,6 +726,10 @@ impl PointBatch {
         &self.metadata
     }
 
+    pub(crate) fn metadata_handle(&self) -> Arc<PointFrameMetadata> {
+        Arc::clone(&self.metadata)
+    }
+
     pub const fn dimensions(&self) -> PointDimensions {
         self.dimensions
     }

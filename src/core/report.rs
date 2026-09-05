@@ -46,7 +46,9 @@ mod tests {
     use serde_json::json;
 
     use super::{ExecutionReport, MACHINE_REPORT_SCHEMA_VERSION};
-    use crate::core::{ExecutionPlan, JobKind, JobSpec, ManagedMemoryBound, SourceSpec};
+    use crate::core::{
+        ByteBound, JobKind, JobSpec, PipelineMemoryRequirements, Planner, SourceSpec,
+    };
 
     #[derive(Debug, Eq, PartialEq, Serialize)]
     struct Summary {
@@ -56,10 +58,17 @@ mod tests {
     #[test]
     fn successful_machine_report_has_a_versioned_envelope() {
         let job = JobSpec::info(SourceSpec::file("recording.bin").expect("valid source"));
-        let plan = ExecutionPlan::checked(
-            job,
-            ManagedMemoryBound::checked(64, 128).expect("valid memory bound"),
+        let requirements = PipelineMemoryRequirements::new(
+            ByteBound::bounded(1),
+            ByteBound::bounded(1),
+            ByteBound::bounded(1),
+            ByteBound::bounded(1),
+            ByteBound::bounded(1),
+            ByteBound::bounded(1),
         );
+        let plan = Planner::new()
+            .plan(job, requirements, 128 * 1024)
+            .expect("valid execution plan");
         let report = ExecutionReport::success(&plan, Summary { bytes_written: 42 });
 
         assert_eq!(report.schema_version(), MACHINE_REPORT_SCHEMA_VERSION);

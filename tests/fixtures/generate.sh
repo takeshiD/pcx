@@ -25,6 +25,14 @@ install -Dm644 "$scratch/corpus/valid/pointcloud2-binary.pcd" \
   "$fixture_root/valid/pointcloud2-binary.pcd"
 install -Dm644 "$scratch/corpus/valid/pointcloud2-ascii.pcd" \
   "$fixture_root/valid/pointcloud2-ascii.pcd"
+for fixture in \
+  scalar-vertices-ascii.ply \
+  scalar-vertices-binary-little-endian.ply \
+  scalar-vertices-binary-big-endian.ply
+do
+  install -Dm644 "$scratch/corpus/valid/$fixture" \
+    "$fixture_root/valid/$fixture"
+done
 install -Dm644 "$scratch/corpus/valid/pointcloud2.mcap" \
   "$fixture_root/valid/pointcloud2.mcap"
 install -Dm644 \
@@ -53,6 +61,16 @@ done
 install -Dm644 \
   "$scratch/corpus/malformed/pcd-points-must-equal-width-times-height.pcd" \
   "$fixture_root/malformed/pcd-points-must-equal-width-times-height.pcd"
+for fixture in \
+  ply-list-properties-are-unsupported.ply \
+  ply-int64-properties-are-unsupported.ply \
+  ply-format-endianness-must-be-known.ply \
+  ply-non-vertex-elements-are-lossy.ply \
+  ply-binary-payload-must-not-be-truncated.ply
+do
+  install -Dm644 "$scratch/corpus/malformed/$fixture" \
+    "$fixture_root/malformed/$fixture"
+done
 
 cp "$fixture_root/valid/pointcloud2.mcap" \
   "$fixture_root/malformed/mcap-leading-magic-must-match.mcap"

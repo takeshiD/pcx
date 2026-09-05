@@ -26,7 +26,8 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 | ROS 2 `PointCloud2` frame extraction               | Available             |
 | Binary and ASCII PCD output                        | Available             |
 | Crop, field selection, frame-local voxel reduction | Planned               |
-| PLY, LAS/LAZ and terminal rendering                | Planned               |
+| PLY scalar-vertex adapter (CLI integration later)  | Available internally  |
+| LAS/LAZ and terminal rendering                     | Planned               |
 | AWS/S3 upload and cloud credentials                | Out of scope          |
 | macOS and Windows support                          | Undecided future work |
 

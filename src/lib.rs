@@ -8,4 +8,5 @@ pub mod core;
 pub mod mcap;
 pub mod ops;
 pub mod pcd;
+pub mod ply;
 pub mod ros2;

@@ -10,8 +10,48 @@ description: Accepted format boundaries and fidelity rules.
 | MCAP container | Container metadata with `pcx info` | No | Available for inspection |
 | ROS 2 `sensor_msgs/msg/PointCloud2` | Strict CDR decoding | No | Available |
 | PCD | No | Binary and ASCII | Available |
+| PLY 1.0 | Scalar vertices in ASCII and both binary byte orders | ASCII and both binary byte orders | Adapter available; no CLI command yet |
 
-PLY, LAS/LAZ and terminal rendering are later work. AWS/S3 transports and cloud credentials are not product features.
+LAS/LAZ and terminal rendering are later work. AWS/S3 transports and cloud credentials are not product features.
+
+## Faithful PLY subset
+
+PLY input and output support exactly one `vertex` element with ordered scalar
+properties. The accepted PLY 1.0 modes are `ascii`,
+`binary_little_endian`, and `binary_big_endian`; binary payloads are decoded
+and encoded according to the declared byte order.
+
+| PLY scalar | Common Point Field |
+| --- | --- |
+| `char` / `int8` | signed 8-bit integer |
+| `uchar` / `uint8` | unsigned 8-bit integer |
+| `short` / `int16` | signed 16-bit integer |
+| `ushort` / `uint16` | unsigned 16-bit integer |
+| `int` / `int32` | signed 32-bit integer |
+| `uint` / `uint32` | unsigned 32-bit integer |
+| `float` / `float32` | IEEE-754 binary32 |
+| `double` / `float64` | IEEE-754 binary64 |
+
+Unknown scalar property names and their order are preserved. List properties,
+non-vertex elements such as faces, 64-bit integers, Point Fields with
+`count > 1`, organized clouds, and semantics that cannot be reconstructed from
+the property name are rejected as unsupported or lossy. Binary floats retain
+their exact bits. ASCII writing and reading reject NaN and infinity because PLY
+1.0 does not define portable spellings for them; finite values, including
+negative zero, round-trip.
+
+PLY does not carry Point Frame metadata or an organized shape. A read produces
+the documented static-cloud defaults: timestamp zero, empty frame id,
+`is_dense = false`, width equal to the vertex count, and height one. Comments
+and `obj_info` lines are accepted as non-semantic header annotations but are not
+part of the common point schema. Writing requires those same static-cloud
+metadata defaults and rejects timestamps, frame identity, density, container
+times, or an organized shape instead of silently discarding them.
+
+The reader parses at most a 64 KiB header, reports the exact point-column
+allocation, and requires a sufficient materialization budget before allocating
+those columns. Payload I/O is synchronous and fixed-buffered; the encoded file
+is never loaded wholesale.
 
 ## Fidelity contract
 

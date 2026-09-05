@@ -22,7 +22,10 @@ description: 現在利用できる機能と今後の順序。
 ## その後
 
 - **Reduction:** field選択、crop、stats、frame単位voxel。
-- **Formats:** PCD入力、PLY、LAS/LAZ、reduced MCAP出力。
+- **Formats:** PCD入力、PLY CLI integration、LAS/LAZ、reduced MCAP出力。
+
+scalar-vertex PLY reader/writer adapter は共通 schema の背後に実装済みですが、
+user-facing command はまだ公開していません。
 - **Terminal rendering:** CPU rasterizer、Unicode、Kitty。Sixelは後続。
 - **Hardening:** fuzz、benchmark、musl調査、resource tuning。
 

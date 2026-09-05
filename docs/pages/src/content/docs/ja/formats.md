@@ -10,8 +10,46 @@ description: 採用するフォーマット境界と忠実性の規則。
 | MCAP コンテナ | `pcx info`によるcontainer metadata | なし | 調査機能を利用可能 |
 | ROS 2 `sensor_msgs/msg/PointCloud2` | 厳密な CDR デコード | なし | 利用可能 |
 | PCD | なし | binary / ASCII | 利用可能 |
+| PLY 1.0 | ASCII と両方の binary byte order の scalar vertex | ASCII と両方の binary byte order | adapter は利用可能、CLI command は未実装 |
 
-PLY、LAS/LAZ、ターミナル描画は将来の対象です。AWS/S3 転送やクラウド認証情報は製品機能に含めません。
+LAS/LAZ、ターミナル描画は将来の対象です。AWS/S3 転送やクラウド認証情報は製品機能に含めません。
+
+## 忠実な PLY subset
+
+PLY の入出力は、順序付き scalar property を持つ単一の `vertex`
+element のみを扱います。PLY 1.0 の `ascii`、`binary_little_endian`、
+`binary_big_endian` を受け付け、binary payload は宣言された byte order
+で decode／encode します。
+
+| PLY scalar | 共通 Point Field |
+| --- | --- |
+| `char` / `int8` | signed 8-bit integer |
+| `uchar` / `uint8` | unsigned 8-bit integer |
+| `short` / `int16` | signed 16-bit integer |
+| `ushort` / `uint16` | unsigned 16-bit integer |
+| `int` / `int32` | signed 32-bit integer |
+| `uint` / `uint32` | unsigned 32-bit integer |
+| `float` / `float32` | IEEE-754 binary32 |
+| `double` / `float64` | IEEE-754 binary64 |
+
+未知の scalar property 名と順序は保持します。list property、face などの
+非 vertex element、64-bit integer、`count > 1` の Point Field、organized
+cloud、property 名から復元できない semantic は、未対応または lossy として
+拒否します。binary float は bit pattern を保持します。PLY 1.0 には NaN と
+infinity の portable な表記がないため ASCII 入出力では拒否し、negative zero
+を含む finite value は round-trip します。
+
+PLY は Point Frame metadata や organized shape を持ちません。読み込み時は
+static cloud の既定値として timestamp zero、空の frame id、
+`is_dense = false`、vertex count と同じ width、height one を設定します。
+comment と `obj_info` は非 semantic な header annotation として受理しますが、
+共通 point schema には含めません。書き込みでも同じ static cloud metadata
+既定値を要求し、timestamp、frame identity、density、container time、organized
+shape を暗黙に破棄せず拒否します。
+
+reader は最大 64 KiB の header のみを parse し、point column の正確な allocation
+量を提示します。十分な materialization budget が渡されるまで column を確保しません。
+payload I/O は synchronous かつ固定 buffer で、encoded file 全体を読み込みません。
 
 ## 忠実性の契約
 

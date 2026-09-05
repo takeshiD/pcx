@@ -116,11 +116,13 @@ src/
 ├── mcap/            # bounded container adapter
 ├── ros2/            # narrow CDR and PointCloud2 decoder
 ├── pcd/             # PCD encoder/decoder
+├── ply/             # faithful scalar-vertex PLY reader/writer
 └── ops/             # point-frame operators
 
 cli -> core <- mcap
               ros2
               pcd
+              ply
               ops
 ```
 
@@ -185,6 +187,16 @@ is rejected with source context. A ROS installation is not required.
 The writer supports binary and ASCII modes. Header fields derive from the
 validated schema. A representation that would lose information fails unless a
 future command exposes an explicit lossy policy.
+
+### PLY
+
+The reader and writer support a documented PLY 1.0 subset with one scalar-only
+`vertex` element in ASCII or either binary byte order. All supported scalar
+properties and their order map through the common schema. Unsupported elements,
+lists, 64-bit integers, vector fields, organized shape, non-default frame
+metadata, and non-portable ASCII float values fail before output or
+materialization. Header probing is bounded and supplies the common Planner with
+an exact column allocation before payload decoding.
 
 ## 10. Operators
 
@@ -273,7 +285,7 @@ The only release environment secret is `CACHIX_AUTH_TOKEN`. The protected publis
 ## 17. Test design
 
 1. Unit tests for checked cursors, schemas, selection, and estimates.
-2. Reviewed minimal MCAP/CDR/PCD fixtures, including malformed inputs.
+2. Reviewed minimal MCAP/CDR/PCD/PLY fixtures, including malformed inputs.
 3. Property tests for layouts, planner monotonicity, and codecs.
 4. CLI integration tests for streams, exit status, `--force`, and interruption.
 5. End-to-end tests for one-frame MCAP-to-PCD conversion.

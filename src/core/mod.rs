@@ -5,6 +5,7 @@
 
 mod error;
 mod job;
+mod operator;
 mod plan;
 pub mod point;
 mod report;
@@ -12,6 +13,13 @@ mod sink;
 
 pub use error::{Error, ErrorCategory, Result};
 pub use job::{Destination, FrameSelector, JobKind, JobSpec, SourceSpec};
+pub use operator::{
+    Determinism, ElementCountRequirement, FidelityLoss, FieldRequirement, FieldSelector,
+    InputCapabilities, LossPolicy, Materialization, MetadataEffect, OperatorBehavior,
+    OperatorContract, OperatorInput, OperatorOutput, OperatorStagePlan, Ordering,
+    OutputRepresentation, OutputSchema, PointCountEffect, PointRepresentation,
+    PrimitiveRequirement, ScratchMemory, ValidatedOperatorPipeline, ValueEffect,
+};
 pub use plan::{
     ByteBound, ExecutionMode, ExecutionPlan, ManagedMemoryBound, ManagedMemoryBreakdown,
     PipelineMemoryRequirements, Planner,

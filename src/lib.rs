@@ -6,5 +6,6 @@
 pub mod cli;
 pub mod core;
 pub mod mcap;
+pub mod ops;
 pub mod pcd;
 pub mod ros2;

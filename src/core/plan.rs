@@ -1,4 +1,11 @@
-use super::{Error, ErrorCategory, JobKind, JobSpec, Result, point::PointView};
+use std::sync::Arc;
+
+use super::{
+    Error, ErrorCategory, JobKind, JobSpec, LossPolicy, OperatorContract, PointRepresentation,
+    Result, ValidatedOperatorPipeline,
+    operator::validate_pipeline,
+    point::{PointDimensions, PointSchema, PointView},
+};
 
 const FIXED_OVERHEAD_BYTES: u64 = 64 * 1024;
 const PROPORTIONAL_OVERHEAD_DIVISOR: u64 = 8;
@@ -85,6 +92,27 @@ impl PipelineMemoryRequirements {
             ByteBound::Bounded(retained_input),
             ByteBound::Bounded(materialization),
             operator_scratch,
+            encoder_buffer,
+            output_buffer,
+            queued_output,
+        ))
+    }
+
+    /// Derive point-owned requirements from a validated operator pipeline.
+    pub fn for_operator_pipeline(
+        view: &PointView,
+        operators: &ValidatedOperatorPipeline,
+        encoder_buffer: ByteBound,
+        output_buffer: ByteBound,
+        queued_output: ByteBound,
+    ) -> Result<Self> {
+        let retained_input = u64::try_from(view.source_len()).map_err(|_| {
+            resource_error("retained input length cannot be represented in the planner")
+        })?;
+        Ok(Self::new(
+            ByteBound::Bounded(retained_input),
+            ByteBound::Bounded(operators.materialization_bytes()),
+            ByteBound::Bounded(operators.peak_scratch_bytes()),
             encoder_buffer,
             output_buffer,
             queued_output,
@@ -194,6 +222,24 @@ impl Planner {
         Self
     }
 
+    /// Validate a frame-local operator chain without executing it.
+    pub fn validate_operators(
+        self,
+        input_schema: Arc<PointSchema>,
+        dimensions: PointDimensions,
+        input_representation: PointRepresentation,
+        contracts: &[OperatorContract],
+        loss_policy: &LossPolicy,
+    ) -> Result<ValidatedOperatorPipeline> {
+        validate_pipeline(
+            input_schema,
+            dimensions,
+            input_representation,
+            contracts,
+            loss_policy,
+        )
+    }
+
     /// Prove a conservative peak before any executor or output sink is created.
     pub fn plan(
         self,
@@ -289,7 +335,10 @@ mod tests {
 
     use super::{ByteBound, ExecutionMode, PipelineMemoryRequirements, Planner};
     use crate::core::{
-        Destination, ErrorCategory, FrameSelector, JobSpec, SourceSpec,
+        Destination, Determinism, ErrorCategory, FrameSelector, InputCapabilities, JobSpec,
+        LossPolicy, Materialization, MetadataEffect, OperatorBehavior, OperatorContract,
+        OperatorInput, OperatorOutput, Ordering, OutputRepresentation, OutputSchema,
+        PointCountEffect, PointRepresentation, ScratchMemory, SourceSpec, ValueEffect,
         point::{
             Endianness, PointDimensions, PointField, PointFrameMetadata, PointLayout, PointSchema,
             PointView, PrimitiveType, Timestamp,
@@ -373,6 +422,60 @@ mod tests {
         assert_eq!(breakdown.output_buffer_bytes(), 13);
         assert_eq!(breakdown.queued_output_bytes(), 14);
         assert!(breakdown.overhead_bytes() >= 64 * 1024);
+    }
+
+    #[test]
+    fn validated_operator_bounds_feed_the_managed_memory_plan() {
+        let view = point_view();
+        let contract = OperatorContract::new(
+            "view-inspection",
+            OperatorInput::new(
+                InputCapabilities::View,
+                [],
+                Materialization::fields([crate::core::FieldSelector::named("x")]),
+            ),
+            OperatorOutput::new(
+                OutputSchema::Preserve,
+                OutputRepresentation::Preserve,
+                PointCountEffect::Preserve,
+                MetadataEffect::Preserve,
+                ValueEffect::Preserve,
+            ),
+            OperatorBehavior::new(
+                [],
+                Ordering::Preserve,
+                Determinism::Deterministic,
+                ScratchMemory::fixed(11),
+            ),
+        );
+        let operators = Planner::new()
+            .validate_operators(
+                Arc::new(view.schema().clone()),
+                view.layout().dimensions(),
+                PointRepresentation::View,
+                &[contract],
+                &LossPolicy::lossless(),
+            )
+            .unwrap();
+        let requirements = PipelineMemoryRequirements::for_operator_pipeline(
+            &view,
+            &operators,
+            ByteBound::bounded(12),
+            ByteBound::bounded(13),
+            ByteBound::bounded(14),
+        )
+        .unwrap();
+        let breakdown = Planner::new()
+            .plan(extract_job(Destination::stdout()), requirements, u64::MAX)
+            .unwrap()
+            .memory()
+            .breakdown();
+
+        assert_eq!(
+            breakdown.materialization_bytes(),
+            operators.materialization_bytes()
+        );
+        assert_eq!(breakdown.operator_scratch_bytes(), 11);
     }
 
     #[test]

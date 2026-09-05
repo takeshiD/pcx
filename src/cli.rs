@@ -4,6 +4,50 @@ use std::{ffi::OsString, process::ExitCode};
 
 use clap::{CommandFactory, Parser};
 
+use crate::core::ErrorCategory;
+
+/// Process statuses assigned to structured core failure categories.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum ExitStatus {
+    Success = 0,
+    Internal = 1,
+    Usage = 2,
+    InvalidData = 3,
+    Unsupported = 4,
+    NotFound = 5,
+    Resource = 6,
+    Io = 7,
+    Interrupted = 130,
+}
+
+impl From<ErrorCategory> for ExitStatus {
+    fn from(category: ErrorCategory) -> Self {
+        match category {
+            ErrorCategory::Usage => Self::Usage,
+            ErrorCategory::InvalidData => Self::InvalidData,
+            ErrorCategory::Unsupported => Self::Unsupported,
+            ErrorCategory::NotFound => Self::NotFound,
+            ErrorCategory::Resource => Self::Resource,
+            ErrorCategory::Io => Self::Io,
+            ErrorCategory::Interrupted => Self::Interrupted,
+            ErrorCategory::Internal => Self::Internal,
+        }
+    }
+}
+
+impl From<ExitStatus> for ExitCode {
+    fn from(status: ExitStatus) -> Self {
+        Self::from(status as u8)
+    }
+}
+
+impl ExitStatus {
+    pub const fn code(self) -> u8 {
+        self as u8
+    }
+}
+
 /// Inspect and reduce point-cloud recordings where the data lives.
 #[derive(Debug, Parser)]
 #[command(
@@ -44,7 +88,10 @@ pub fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::try_run_from;
+    use std::collections::HashSet;
+
+    use super::{ExitStatus, try_run_from};
+    use crate::core::ErrorCategory;
 
     #[test]
     fn accepts_the_program_name_without_product_commands() {
@@ -53,6 +100,29 @@ mod tests {
 
     #[test]
     fn rejects_unknown_arguments() {
-        assert!(try_run_from(["pcx", "--unknown"]).is_err());
+        let error = try_run_from(["pcx", "--unknown"]).expect_err("argument must fail");
+        assert_eq!(error.exit_code(), i32::from(ExitStatus::Usage.code()));
+    }
+
+    #[test]
+    fn every_error_category_has_a_distinct_nonzero_exit_status() {
+        let mappings = [
+            (ErrorCategory::Usage, 2),
+            (ErrorCategory::InvalidData, 3),
+            (ErrorCategory::Unsupported, 4),
+            (ErrorCategory::NotFound, 5),
+            (ErrorCategory::Resource, 6),
+            (ErrorCategory::Io, 7),
+            (ErrorCategory::Interrupted, 130),
+            (ErrorCategory::Internal, 1),
+        ];
+        let mut assigned = HashSet::new();
+
+        for (category, expected_code) in mappings {
+            let actual_code = ExitStatus::from(category).code();
+            assert_eq!(actual_code, expected_code);
+            assert_ne!(actual_code, ExitStatus::Success.code());
+            assert!(assigned.insert(actual_code), "duplicate exit status");
+        }
     }
 }

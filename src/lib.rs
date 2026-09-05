@@ -4,3 +4,4 @@
 //! the `pcx` executable and its documented machine-readable output.
 
 pub mod cli;
+pub mod core;

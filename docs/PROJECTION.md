@@ -5,6 +5,8 @@ Status: implemented for terminal-neutral raster consumers.
 This contract projects exactly one decoded Point Frame into a bounded CPU
 raster. It deliberately defines no terminal escape protocol, capability
 detection, Unicode mapping, Sixel encoding, or Kitty graphics encoding.
+The downstream Unicode mapping is specified separately in
+[`TERMINAL.md`](./TERMINAL.md).
 
 ## Input and fidelity
 

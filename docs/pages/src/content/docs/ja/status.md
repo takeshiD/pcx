@@ -28,7 +28,7 @@ description: 現在利用できる機能と今後の順序。
 
 scalar-vertex PLY reader/writer adapter は共通 schema の背後に実装済みですが、
 user-facing command はまだ公開していません。
-- **Terminal rendering:** CPU rasterizer、Unicode、Kitty。Sixelは後続。
+- **Terminal rendering:** CPU rasterizer と Unicode backend は内部実装済み。capability selection、Kitty、Sixel は後続。
 - **Hardening:** fuzz、benchmark、musl調査、resource tuning。
 
 ## 明示的な非目標

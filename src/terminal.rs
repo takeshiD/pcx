@@ -1,8 +1,16 @@
-//! Conservative terminal-backend capability selection.
+//! Conservative terminal-backend selection and bounded raster encoders.
 //!
-//! This module selects a backend but never renders or writes a terminal query.
-//! A rendering integration supplies a typed [`CapabilityQuery`] implementation;
+//! Selection never renders or writes a terminal query. Encoders receive an
+//! explicit output kind and stream deterministic bytes synchronously. A
+//! rendering integration supplies a typed [`CapabilityQuery`] implementation;
 //! the detector bounds that implementation and keeps process streams untouched.
+
+mod unicode;
+
+pub use unicode::{
+    TerminalCellDimensions, UnicodeColorPolicy, UnicodeOutputKind, UnicodeRenderError,
+    UnicodeRenderPlan,
+};
 
 use std::{
     ffi::{OsStr, OsString},

@@ -22,7 +22,8 @@ src/
 ├── ros2/          strict CDR and PointCloud2 adapter
 ├── pcd/           PCD reader/writer adapter
 ├── ply/           faithful scalar-vertex PLY adapter
-└── ops/           semantic point operators
+├── ops/           semantic point operators
+└── terminal/      bounded encoders for the common CPU raster
 ```
 
 Allowed dependencies:
@@ -34,6 +35,7 @@ ros2 -> core
 pcd  -> core
 ply  -> core
 ops  -> core
+terminal -> ops
 core -> standard library and domain-focused utilities only
 ```
 
@@ -154,6 +156,12 @@ Terminal-neutral CPU projection is also frame-local. Its axis-aligned camera,
 fitted-bounds, z-buffer, color, numeric-determinism, and memory contracts are
 specified in [`PROJECTION.md`](./PROJECTION.md). Terminal protocols and
 capability detection remain separate downstream concerns.
+
+The portable Unicode terminal encoder consumes that raster synchronously and
+streams bounded half-block text without retaining a frame-sized output buffer.
+Its cell geometry, color normalization, non-TTY safety, deterministic snapshot,
+and control-sequence contracts are specified in [`TERMINAL.md`](./TERMINAL.md).
+Backend capability probing remains outside encoders.
 
 ## Fidelity contract
 

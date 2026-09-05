@@ -19,6 +19,8 @@ Fast, deterministic tests live beside their modules.
 - `ply`: bounded headers, both binary byte orders, ASCII values, arbitrary scalar properties, fidelity refusals.
 - `ops`: boundaries and invariants for every semantic operator, including
   projection camera, aspect, z-buffer, color, and degenerate-bounds policies.
+- `terminal`: cell geometry, explicit color profiles, non-TTY normalization,
+  output bounds, and control-sequence confinement for hostile raster metadata.
 
 ### Property tests
 
@@ -77,6 +79,7 @@ Every checked-in fixture records its source, generator command/version, license,
 | PCD header | reviewed golden text |
 | PCD points | independently decoded semantic values |
 | CPU projection | reviewed synthetic raster cells plus independent policy assertions |
+| Unicode terminal output | reviewed LF-only snapshot with ESC made visible as literal `\x1b` |
 | CLI text/JSON | reviewed snapshots with volatile values normalized |
 | Errors | typed code and structured context, never backtraces |
 

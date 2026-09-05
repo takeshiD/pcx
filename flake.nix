@@ -78,6 +78,9 @@
         let
           pkgs = pkgsFor system;
           rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+          fuzzToolchain = pkgs.rust-bin.nightly.latest.default.override {
+            extensions = [ "rust-src" ];
+          };
         in
         {
           default = pkgs.mkShell {
@@ -86,6 +89,13 @@
               pkgs.cargo-fuzz
               pkgs.nodejs_24
               pkgs.nixfmt
+            ];
+          };
+
+          fuzz = pkgs.mkShell {
+            packages = [
+              fuzzToolchain
+              pkgs.cargo-fuzz
             ];
           };
         }

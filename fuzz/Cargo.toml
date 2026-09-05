@@ -1,0 +1,40 @@
+[package]
+name = "pcx-cli-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+pcx-cli = { path = ".." }
+
+[[bin]]
+name = "mcap_probe"
+path = "fuzz_targets/mcap_probe.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cdr"
+path = "fuzz_targets/cdr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pointcloud2_layout"
+path = "fuzz_targets/pointcloud2_layout.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pcd_headers"
+path = "fuzz_targets/pcd_headers.rs"
+test = false
+doc = false
+bench = false

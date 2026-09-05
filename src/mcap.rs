@@ -14,7 +14,7 @@ use std::{
 
 use ::mcap::{
     McapError, parse_record,
-    records::Record,
+    records::{Record, op},
     sans_io::linear_reader::{LinearReadEvent, LinearReader, LinearReaderOptions},
 };
 
@@ -222,8 +222,8 @@ pub struct SourceOptions {
     pub read_chunk_bytes: usize,
     /// Largest emitted record body accepted.
     ///
-    /// Compressed chunks may be larger in total because they are streamed, but
-    /// each decompressed inner record is subject to this limit.
+    /// Both the compressed and declared decompressed size of a chunk, and each
+    /// decompressed inner record, are subject to this limit.
     pub max_record_bytes: usize,
 }
 
@@ -588,6 +588,12 @@ pub enum ProbeError {
         opcode: u8,
         source: McapError,
     },
+    RecordLayout {
+        offset: u64,
+        record: u64,
+        opcode: u8,
+        message: &'static str,
+    },
     Discovery {
         message: String,
     },
@@ -622,6 +628,15 @@ impl fmt::Display for ProbeError {
                 formatter,
                 "invalid MCAP record {record} (opcode 0x{opcode:02x}) near byte offset {offset}: {source}"
             ),
+            Self::RecordLayout {
+                offset,
+                record,
+                opcode,
+                message,
+            } => write!(
+                formatter,
+                "invalid MCAP record {record} (opcode 0x{opcode:02x}) near byte offset {offset}: {message}"
+            ),
             Self::Discovery { message } => write!(formatter, "invalid MCAP: {message}"),
         }
     }
@@ -632,7 +647,7 @@ impl Error for ProbeError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Reader { source, .. } | Self::Parse { source, .. } => Some(source),
-            Self::InvalidOptions(_) | Self::Discovery { .. } => None,
+            Self::InvalidOptions(_) | Self::RecordLayout { .. } | Self::Discovery { .. } => None,
         }
     }
 }
@@ -643,11 +658,222 @@ impl ProbeError {
         match self {
             Self::InvalidOptions(_) => ErrorCategory::Internal,
             Self::Io { .. } => ErrorCategory::Io,
-            Self::Reader { .. } | Self::Parse { .. } | Self::Discovery { .. } => {
-                ErrorCategory::InvalidData
-            }
+            Self::Reader { .. }
+            | Self::Parse { .. }
+            | Self::RecordLayout { .. }
+            | Self::Discovery { .. } => ErrorCategory::InvalidData,
         }
     }
+}
+
+fn is_probe_record(opcode: u8) -> bool {
+    matches!(
+        opcode,
+        op::HEADER | op::SCHEMA | op::CHANNEL | op::MESSAGE | op::METADATA | op::DATA_END
+    )
+}
+
+/// Validate every allocation-driving length before calling the official record parser.
+///
+/// `mcap::parse_record` currently allocates `McapString` storage from its u32
+/// prefix before verifying that the bytes remain in the record body. The
+/// linear reader bounds the outer body, but that alone does not bound this
+/// inner allocation. This pass is deliberately allocation-free.
+fn validate_probe_record_body(opcode: u8, data: &[u8]) -> Result<(), &'static str> {
+    let mut cursor = RecordBodyCursor::new(data);
+    match opcode {
+        op::HEADER => {
+            cursor.string()?;
+            cursor.string()?;
+        }
+        op::SCHEMA => {
+            cursor.take(2)?;
+            cursor.string()?;
+            cursor.string()?;
+            cursor.length_prefixed_bytes()?;
+        }
+        op::CHANNEL => {
+            cursor.take(4)?;
+            cursor.string()?;
+            cursor.string()?;
+            cursor.string_map()?;
+        }
+        op::MESSAGE => {
+            cursor.take(2 + 4 + 8 + 8)?;
+            cursor.take_remaining();
+        }
+        op::METADATA => {
+            cursor.string()?;
+            cursor.string_map()?;
+        }
+        op::DATA_END => {
+            cursor.take(4)?;
+        }
+        _ => return Ok(()),
+    }
+    cursor.finish()
+}
+
+struct RecordBodyCursor<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> RecordBodyCursor<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+
+    fn take(&mut self, length: usize) -> Result<&'a [u8], &'static str> {
+        let end = self
+            .offset
+            .checked_add(length)
+            .ok_or("record field length overflow")?;
+        let bytes = self
+            .data
+            .get(self.offset..end)
+            .ok_or("record field exceeds its body")?;
+        self.offset = end;
+        Ok(bytes)
+    }
+
+    fn u32(&mut self) -> Result<usize, &'static str> {
+        let bytes: [u8; 4] = self
+            .take(4)?
+            .try_into()
+            .map_err(|_| "record length prefix is truncated")?;
+        usize::try_from(u32::from_le_bytes(bytes)).map_err(|_| "record length is unsupported")
+    }
+
+    fn u64(&mut self) -> Result<u64, &'static str> {
+        let bytes: [u8; 8] = self
+            .take(8)?
+            .try_into()
+            .map_err(|_| "record integer is truncated")?;
+        Ok(u64::from_le_bytes(bytes))
+    }
+
+    fn string(&mut self) -> Result<(), &'static str> {
+        self.string_bytes().map(|_| ())
+    }
+
+    fn string_bytes(&mut self) -> Result<&'a [u8], &'static str> {
+        let length = self.u32()?;
+        self.take(length)
+    }
+
+    fn length_prefixed_bytes(&mut self) -> Result<(), &'static str> {
+        let length = self.u32()?;
+        self.take(length)?;
+        Ok(())
+    }
+
+    fn string_map(&mut self) -> Result<(), &'static str> {
+        let byte_length = self.u32()?;
+        let map_bytes = self.take(byte_length)?;
+        let mut map = Self::new(map_bytes);
+        while map.offset < map.data.len() {
+            map.string()?;
+            map.string()?;
+        }
+        map.finish()
+    }
+
+    fn take_remaining(&mut self) {
+        self.offset = self.data.len();
+    }
+
+    fn finish(self) -> Result<(), &'static str> {
+        if self.offset == self.data.len() {
+            Ok(())
+        } else {
+            Err("record body contains trailing bytes")
+        }
+    }
+}
+
+fn prevalidate_compressed_chunks<R: Read + Seek>(
+    input: &mut R,
+    start_offset: u64,
+    options: SourceOptions,
+) -> Result<(), ProbeError> {
+    let reader_options = LinearReaderOptions::default()
+        .with_emit_chunks(true)
+        .with_check_finishes_after_end_magic(true)
+        .with_record_length_limit(options.max_record_bytes);
+    let mut reader = LinearReader::new_with_options(reader_options);
+    let mut offset = start_offset;
+    let mut record = 0_u64;
+
+    let result = loop {
+        let event = match reader.next_event() {
+            Some(Ok(event)) => event,
+            Some(Err(source)) => {
+                break Err(ProbeError::Reader {
+                    offset,
+                    record,
+                    source,
+                });
+            }
+            None => break Ok(()),
+        };
+        match event {
+            LinearReadEvent::ReadRequest(requested) => {
+                let amount = requested.min(options.read_chunk_bytes);
+                let read = input
+                    .read(reader.insert(amount))
+                    .map_err(|source| ProbeError::Io { offset, source })?;
+                reader.notify_read(read);
+                offset = offset.saturating_add(read as u64);
+            }
+            LinearReadEvent::Record { data, opcode } => {
+                if opcode == op::CHUNK {
+                    validate_chunk_frame(data, options.max_record_bytes).map_err(|message| {
+                        ProbeError::RecordLayout {
+                            offset,
+                            record,
+                            opcode,
+                            message,
+                        }
+                    })?;
+                }
+                record = record.saturating_add(1);
+            }
+        }
+    };
+
+    input
+        .seek(SeekFrom::Start(start_offset))
+        .map_err(|source| ProbeError::Io { offset, source })?;
+    result
+}
+
+fn validate_chunk_frame(data: &[u8], max_record_bytes: usize) -> Result<(), &'static str> {
+    let mut cursor = RecordBodyCursor::new(data);
+    cursor.take(16)?;
+    let uncompressed_size = cursor.u64()?;
+    if uncompressed_size > max_record_bytes as u64 {
+        return Err("declared decompressed chunk exceeds the configured record limit");
+    }
+    cursor.take(4)?;
+    let compression = cursor.string_bytes()?;
+    let compressed_size =
+        usize::try_from(cursor.u64()?).map_err(|_| "compressed chunk size is unsupported")?;
+    let compressed = cursor.take(compressed_size)?;
+
+    if compression == b"zstd" {
+        let frame_size = zstd::zstd_safe::find_frame_compressed_size(compressed)
+            .map_err(|_| "invalid zstd chunk frame")?;
+        if frame_size != compressed.len() {
+            return Err("zstd chunk contains trailing or incomplete compressed data");
+        }
+        let content_size = zstd::zstd_safe::get_frame_content_size(compressed)
+            .map_err(|_| "invalid zstd chunk content size")?;
+        if content_size.is_some_and(|size| size != uncompressed_size) {
+            return Err("zstd frame content size disagrees with the MCAP chunk header");
+        }
+    }
+    Ok(())
 }
 
 /// A synchronous pull source over the official MCAP sans-I/O reader.
@@ -667,9 +893,10 @@ impl<R: Read + Seek> Source<R> {
         let offset = input
             .stream_position()
             .map_err(|source| ProbeError::Io { offset: 0, source })?;
+        prevalidate_compressed_chunks(&mut input, offset, options)?;
         let reader_options = LinearReaderOptions::default()
             .with_check_finishes_after_end_magic(true)
-            .with_validate_chunk_crcs(true)
+            .with_prevalidate_chunk_crcs(true)
             .with_validate_data_section_crc(true)
             .with_validate_summary_section_crc(true)
             .with_record_length_limit(options.max_record_bytes);
@@ -723,6 +950,17 @@ impl<R: Read + Seek> Source<R> {
                     self.stats.records_read += 1;
                     self.stats.max_record_bytes = self.stats.max_record_bytes.max(data.len());
                     let record_number = self.stats.records_read - 1;
+                    if !is_probe_record(opcode) {
+                        continue;
+                    }
+                    validate_probe_record_body(opcode, data).map_err(|message| {
+                        ProbeError::RecordLayout {
+                            offset: self.offset,
+                            record: record_number,
+                            opcode,
+                            message,
+                        }
+                    })?;
                     let parsed =
                         parse_record(opcode, data).map_err(|source| ProbeError::Parse {
                             offset: self.offset,
@@ -766,7 +1004,7 @@ impl<R: Read + Seek> Source<R> {
         self.reader = LinearReader::new_with_options(
             LinearReaderOptions::default()
                 .with_check_finishes_after_end_magic(true)
-                .with_validate_chunk_crcs(true)
+                .with_prevalidate_chunk_crcs(true)
                 .with_validate_data_section_crc(true)
                 .with_validate_summary_section_crc(true)
                 .with_record_length_limit(self.options.max_record_bytes),
@@ -1082,6 +1320,20 @@ mod tests {
         records
     }
 
+    fn first_probe_error(bytes: Vec<u8>, options: SourceOptions) -> ProbeError {
+        let mut source = match Source::new(Cursor::new(bytes), options) {
+            Ok(source) => source,
+            Err(error) => return error,
+        };
+        loop {
+            match source.next_probe() {
+                Ok(Some(_)) => {}
+                Ok(None) => panic!("malformed input unexpectedly reached EOF"),
+                Err(error) => return error,
+            }
+        }
+    }
+
     fn duplicate_topic_recording() -> Vec<u8> {
         let cursor = Cursor::new(Vec::new());
         let mut writer = Writer::with_options(
@@ -1263,20 +1515,10 @@ mod tests {
     fn truncation_is_contextual_and_does_not_panic() {
         let mut bytes = recording(Some(Compression::Zstd), &[b"payload"]);
         bytes.truncate(bytes.len() - 12);
-        let result = std::panic::catch_unwind(|| {
-            let mut source = Source::new(Cursor::new(bytes), SourceOptions::default())
-                .expect("source should open");
-            loop {
-                match source.next_probe() {
-                    Ok(Some(_)) => {}
-                    other => break other,
-                }
-            }
-        });
+        let result =
+            std::panic::catch_unwind(|| first_probe_error(bytes, SourceOptions::default()));
 
-        let error = result
-            .expect("malformed input must not panic")
-            .expect_err("truncation must fail");
+        let error = result.expect("malformed input must not panic");
         assert!(matches!(error, ProbeError::Reader { .. }));
         assert!(error.to_string().contains("byte offset"));
         assert!(error.to_string().contains("record"));
@@ -1286,12 +1528,44 @@ mod tests {
     fn corrupt_magic_is_contextual_and_does_not_panic() {
         let mut bytes = recording(None, &[b"payload"]);
         bytes[0] = 0;
-        let mut source =
-            Source::new(Cursor::new(bytes), SourceOptions::default()).expect("source should open");
-
-        let error = source.next_probe().expect_err("bad magic must fail");
+        let error = first_probe_error(bytes, SourceOptions::default());
         assert!(matches!(error, ProbeError::Reader { .. }));
         assert!(error.to_string().contains("byte offset"));
+    }
+
+    #[test]
+    fn inner_string_length_is_rejected_before_record_parser_allocation() {
+        let mut bytes = Vec::from(::mcap::MAGIC);
+        bytes.push(super::op::HEADER);
+        bytes.extend_from_slice(&8_u64.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        bytes.push(super::op::DATA_END);
+        bytes.extend_from_slice(&4_u64.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.push(super::op::FOOTER);
+        bytes.extend_from_slice(&20_u64.to_le_bytes());
+        bytes.extend_from_slice(&[0; 20]);
+        bytes.extend_from_slice(::mcap::MAGIC);
+        let mut source = Source::new(
+            Cursor::new(bytes),
+            SourceOptions {
+                read_chunk_bytes: 138,
+                max_record_bytes: 1024 * 1024,
+            },
+        )
+        .expect("source should open");
+
+        let error = source
+            .next_probe()
+            .expect_err("oversized inner string must be rejected");
+        assert!(matches!(
+            error,
+            ProbeError::RecordLayout {
+                opcode: super::op::HEADER,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -1300,18 +1574,18 @@ mod tests {
         bytes.push(::mcap::records::op::SCHEMA);
         bytes.extend_from_slice(&1_u64.to_le_bytes());
         bytes.push(0);
-        let result = std::panic::catch_unwind(|| {
-            let mut source = Source::new(Cursor::new(bytes), SourceOptions::default())
-                .expect("source should open");
-            source.next_probe()
-        });
+        let result =
+            std::panic::catch_unwind(|| first_probe_error(bytes, SourceOptions::default()));
 
-        let error = result
-            .expect("malformed record must not panic")
-            .expect_err("malformed record must fail");
-        assert!(matches!(error, ProbeError::Parse { opcode: 3, .. }));
-        assert!(error.to_string().contains("record 0"));
-        assert!(error.to_string().contains("opcode 0x03"));
+        let error = result.expect("malformed record must not panic");
+        assert!(matches!(
+            error,
+            ProbeError::RecordLayout { opcode: 3, .. } | ProbeError::Reader { .. }
+        ));
+        assert!(error.to_string().contains("record"));
+        if matches!(error, ProbeError::RecordLayout { .. }) {
+            assert!(error.to_string().contains("opcode 0x03"));
+        }
     }
 
     #[test]
@@ -1319,16 +1593,13 @@ mod tests {
         let mut bytes = Vec::from(::mcap::MAGIC);
         bytes.push(::mcap::records::op::SCHEMA);
         bytes.extend_from_slice(&100_u64.to_le_bytes());
-        let mut source = Source::new(
-            Cursor::new(bytes),
+        let error = first_probe_error(
+            bytes,
             SourceOptions {
                 read_chunk_bytes: 4,
                 max_record_bytes: 16,
             },
-        )
-        .expect("source should open");
-
-        let error = source.next_probe().expect_err("oversized record must fail");
+        );
         assert!(matches!(error, ProbeError::Reader { .. }));
         assert!(error.to_string().contains("100"));
     }

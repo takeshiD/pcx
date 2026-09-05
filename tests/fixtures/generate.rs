@@ -1,4 +1,4 @@
-//! Deterministic synthetic fixture generator for issue #15.
+//! Deterministic synthetic parser-fixture generator.
 //!
 //! This is test-data tooling, not a parser or product implementation. The raw
 //! MCAP seed is rewritten by the official `mcap` CLI before it is checked in.
@@ -60,33 +60,42 @@ impl Cdr {
     }
 }
 
-fn pointcloud2_cdr(endian: Endian, invalid_z_offset: bool) -> Vec<u8> {
+fn pointcloud2_cdr_with(
+    endian: Endian,
+    nanoseconds: u32,
+    height: u32,
+    width: u32,
+    fields: &[(&str, u32, u8, u32)],
+    point_step: u32,
+    row_step: u32,
+    data: &[u8],
+) -> Vec<u8> {
     let mut cdr = Cdr::new(endian);
     cdr.i32(1_700_000_000);
-    cdr.u32(123_456_789);
+    cdr.u32(nanoseconds);
     cdr.string("map");
-    cdr.u32(1); // height
-    cdr.u32(2); // width
-    cdr.u32(5); // fields length
+    cdr.u32(height);
+    cdr.u32(width);
+    cdr.u32(u32::try_from(fields.len()).unwrap());
 
-    for (name, offset, datatype) in [
-        ("x", 0, 7),
-        ("y", 4, 7),
-        ("z", if invalid_z_offset { 14 } else { 8 }, 7),
-        ("intensity", 12, 4),
-        ("ring", 14, 4),
-    ] {
+    for &(name, offset, datatype, count) in fields {
         cdr.string(name);
         cdr.u32(offset);
         cdr.u8(datatype);
-        cdr.u32(1);
+        cdr.u32(count);
     }
 
     cdr.u8(matches!(endian, Endian::Big) as u8);
-    cdr.u32(16); // point_step
-    cdr.u32(32); // row_step
-    cdr.u32(32); // data sequence length
+    cdr.u32(point_step);
+    cdr.u32(row_step);
+    cdr.u32(u32::try_from(data.len()).unwrap());
+    cdr.bytes.extend_from_slice(data);
+    cdr.u8(0); // is_dense
+    cdr.bytes
+}
 
+fn standard_point_data(endian: Endian) -> Vec<u8> {
+    let mut data = Vec::new();
     for (x, y, z, intensity, ring) in [
         (1.0_f32, -2.5_f32, 0.0_f32, 42_u16, 7_u16),
         (
@@ -105,14 +114,38 @@ fn pointcloud2_cdr(endian: Endian, invalid_z_offset: bool) -> Vec<u8> {
             Endian::Little => value.to_le_bytes(),
             Endian::Big => value.to_be_bytes(),
         };
-        cdr.bytes.extend(float_bytes(x));
-        cdr.bytes.extend(float_bytes(y));
-        cdr.bytes.extend(float_bytes(z));
-        cdr.bytes.extend(short_bytes(intensity));
-        cdr.bytes.extend(short_bytes(ring));
+        data.extend(float_bytes(x));
+        data.extend(float_bytes(y));
+        data.extend(float_bytes(z));
+        data.extend(short_bytes(intensity));
+        data.extend(short_bytes(ring));
     }
-    cdr.u8(0); // is_dense: false because the second point contains NaN
-    cdr.bytes
+    data
+}
+
+const STANDARD_FIELDS: &[(&str, u32, u8, u32)] = &[
+    ("x", 0, 7, 1),
+    ("y", 4, 7, 1),
+    ("z", 8, 7, 1),
+    ("intensity", 12, 4, 1),
+    ("ring", 14, 4, 1),
+];
+
+fn pointcloud2_cdr(endian: Endian, invalid_z_offset: bool) -> Vec<u8> {
+    let mut fields = STANDARD_FIELDS.to_vec();
+    if invalid_z_offset {
+        fields[2].1 = 14;
+    }
+    pointcloud2_cdr_with(
+        endian,
+        123_456_789,
+        1,
+        2,
+        &fields,
+        16,
+        32,
+        &standard_point_data(endian),
+    )
 }
 
 fn mcap_string(value: &str) -> Vec<u8> {
@@ -249,6 +282,61 @@ fn main() {
 
     write(root, "valid/pointcloud2-little-endian.cdr", &little);
     write(root, "valid/pointcloud2-big-endian.cdr", &big);
+    let mut organized_data = Vec::new();
+    for row in [[1.0_f32, 2.0], [3.0, 4.0]] {
+        for value in row {
+            organized_data.extend(value.to_le_bytes());
+        }
+        organized_data.extend([0xaa; 4]);
+    }
+    write(
+        root,
+        "valid/pointcloud2-organized-row-padding.cdr",
+        pointcloud2_cdr_with(
+            Endian::Little,
+            123_456_789,
+            2,
+            2,
+            &[("x", 0, 7, 1)],
+            4,
+            12,
+            &organized_data,
+        ),
+    );
+    let mut varied_data = Vec::new();
+    varied_data.extend([1_u8, 2]);
+    varied_data.extend((-3_i8).to_le_bytes());
+    varied_data.extend(4_u16.to_le_bytes());
+    varied_data.extend((-5_i16).to_le_bytes());
+    varied_data.extend(6_u32.to_le_bytes());
+    varied_data.extend((-7_i32).to_le_bytes());
+    for value in [8.0_f32, 9.0, 10.0] {
+        varied_data.extend(value.to_le_bytes());
+    }
+    varied_data.extend(11.0_f64.to_le_bytes());
+    write(
+        root,
+        "valid/pointcloud2-reordered-fields-and-count.cdr",
+        pointcloud2_cdr_with(
+            Endian::Little,
+            123_456_789,
+            1,
+            1,
+            &[
+                ("returns", 0, 2, 2),
+                ("i8", 2, 1, 1),
+                ("u16", 3, 4, 1),
+                ("i16", 5, 3, 1),
+                ("u32", 7, 6, 1),
+                ("i32", 11, 5, 1),
+                ("normal", 15, 7, 3),
+                ("time", 27, 8, 1),
+            ],
+            35,
+            35,
+            &varied_data,
+        ),
+    );
     write(root, "valid/pointcloud2-binary.pcd", binary_pcd());
     write(
         root,
@@ -271,6 +359,113 @@ fn main() {
         root,
         "malformed/pointcloud2-field-must-fit-point-step.cdr",
         pointcloud2_cdr(Endian::Little, true),
+    );
+    for (name, fields, point_step) in [
+        (
+            "pointcloud2-field-names-must-be-unique.cdr",
+            vec![("x", 0, 7, 1), ("x", 4, 7, 1)],
+            8,
+        ),
+        (
+            "pointcloud2-field-ranges-must-not-overlap.cdr",
+            vec![("x", 0, 7, 1), ("intensity", 2, 4, 1)],
+            4,
+        ),
+        (
+            "pointcloud2-field-count-must-be-positive.cdr",
+            vec![("x", 0, 7, 0)],
+            4,
+        ),
+        (
+            "pointcloud2-field-datatype-must-be-supported.cdr",
+            vec![("x", 0, 9, 1)],
+            4,
+        ),
+    ] {
+        write(
+            root,
+            &format!("malformed/{name}"),
+            pointcloud2_cdr_with(
+                Endian::Little,
+                123_456_789,
+                1,
+                1,
+                &fields,
+                point_step,
+                point_step,
+                &vec![0; point_step as usize],
+            ),
+        );
+    }
+    write(
+        root,
+        "malformed/pointcloud2-row-step-must-cover-row.cdr",
+        pointcloud2_cdr_with(
+            Endian::Little,
+            123_456_789,
+            1,
+            2,
+            &[("x", 0, 7, 1)],
+            4,
+            7,
+            &[0; 7],
+        ),
+    );
+    write(
+        root,
+        "malformed/pointcloud2-data-length-must-equal-height-times-row-step.cdr",
+        pointcloud2_cdr_with(
+            Endian::Little,
+            123_456_789,
+            2,
+            2,
+            &[("x", 0, 7, 1)],
+            4,
+            8,
+            &[0; 15],
+        ),
+    );
+    write(
+        root,
+        "malformed/pointcloud2-timestamp-nanoseconds-must-be-canonical.cdr",
+        pointcloud2_cdr_with(
+            Endian::Little,
+            1_000_000_000,
+            1,
+            0,
+            &[],
+            0,
+            0,
+            &[],
+        ),
+    );
+    write(
+        root,
+        "malformed/pointcloud2-height-must-be-positive.cdr",
+        pointcloud2_cdr_with(
+            Endian::Little,
+            123_456_789,
+            0,
+            1,
+            &[("x", 0, 7, 1)],
+            4,
+            4,
+            &[],
+        ),
+    );
+    write(
+        root,
+        "malformed/pointcloud2-point-step-must-be-positive.cdr",
+        pointcloud2_cdr_with(
+            Endian::Little,
+            123_456_789,
+            1,
+            1,
+            &[],
+            0,
+            0,
+            &[],
+        ),
     );
     write(
         root,

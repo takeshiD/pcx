@@ -45,6 +45,7 @@ pub enum PointFieldSemantic {
     Y,
     Z,
     Intensity,
+    Classification,
     Ring,
     Timestamp,
 }

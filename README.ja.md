@@ -27,10 +27,11 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 | binary／ASCII PCD出力 | 利用可能 |
 | strict PCD reader（CLI integration は今後） | 内部で利用可能 |
 | encoded 1 message MCAP passthrough | 利用可能 |
+| bounded synchronous LAS/LAZ library I/O | 利用可能 |
 | crop、field選択、frame単位voxel | 計画中 |
 | PLY scalar-vertex adapter（CLI integration は今後） | 内部で利用可能 |
-| CPU projection と Unicode terminal renderer | 内部実装済み |
-| LAS/LAZ、image-protocol terminal rendering | 計画中 |
+| CPU projection、terminal capability selection、Unicode backend | 内部実装済み |
+| LAS/LAZ CLI command、Kitty、Sixel | 計画中 |
 | AWS/S3 upload、cloud credential | 対象外 |
 | macOS／Windows | 将来候補・時期未定 |
 

@@ -24,11 +24,14 @@ description: 現在利用できる機能と今後の順序。
 - **Reduction:** field選択、crop、stats、frame単位voxel。
 - **利用可能なFormat追加:** faithfulな1 message encoded MCAP passthrough。
 - **利用可能なFormat追加:** strict ASCII／little-endian binary PCD reader adapter。
-- **Formats:** PCD input CLI integration、PLY CLI integration、LAS/LAZ。
+- **Formats:** PCD input CLI integration、PLY CLI integration、LAS/LAZ CLI integration。
 
 scalar-vertex PLY reader/writer adapter は共通 schema の背後に実装済みですが、
 user-facing command はまだ公開していません。
-- **Terminal rendering:** CPU rasterizer と Unicode backend は内部実装済み。capability selection、Kitty、Sixel は後続。
+bounded LAS/LAZ reader/writer adapter も共通 schema の背後に実装済みですが、
+user-facing command はまだ公開していません。
+
+- **Terminal rendering:** CPU rasterizer、capability selection、Unicode backend は内部実装済み。Kitty、Sixel は後続。
 - **Hardening:** fuzz、benchmark、musl調査、resource tuning。
 
 ## 明示的な非目標

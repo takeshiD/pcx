@@ -11,10 +11,11 @@ description: Accepted format boundaries and fidelity rules.
 | ROS 2 `sensor_msgs/msg/PointCloud2` | Strict CDR decoding | No | Available |
 | PCD | ASCII and little-endian binary | Binary and ASCII | Reader adapter available; no input CLI command yet |
 | PLY 1.0 | Scalar vertices in ASCII and both binary byte orders | ASCII and both binary byte orders | Adapter available; no CLI command yet |
+| LAS/LAZ | Bounded synchronous batches | Bounded synchronous batches | Library adapter available; CLI not yet exposed |
 
-LAS/LAZ and image-protocol terminal rendering are later work. The CPU rasterizer
-and Unicode terminal backend are available internally. AWS/S3 transports and
-cloud credentials are not product features.
+LAS/LAZ CLI integration, Kitty, and Sixel are later work. The CPU rasterizer,
+capability selection, and Unicode terminal backend are available internally.
+AWS/S3 transports and cloud credentials are not product features.
 
 ## Faithful PLY subset
 
@@ -59,6 +60,22 @@ MCAP passthrough retains the selected encoded Message and its exact
 Channel/Schema relationship, together with recording-level attachments,
 metadata, and private records. Derived container structure is rebuilt with a
 fixed bounded-memory policy.
+
+## LAS and LAZ mapping
+
+LAS/LAZ coordinates map to semantic `f64` X/Y/Z Point Fields. Their original
+per-axis scale and offset remain attached as the Coordinate Transform, and CRS
+VLR/EVLR bytes remain in the retained LAS header. Classification is separate
+from synthetic, key-point, withheld and overlap flags. Standard point-format
+attributes map to named typed Point Fields; Extra Bytes map to the ordered
+`u8[count]` field `las_extra_bytes` while their descriptor records are retained.
+
+Reads use a caller-selected maximum points per batch and reject a memory bound
+that cannot cover the raw slab, decoded columns and retained header records.
+Serial LAZ compression avoids an unbounded parallel queue, and writers require
+a maximum point count so the chunk table is planned before output. Writing
+refuses coordinate quantization unless representation loss is explicitly
+authorized.
 
 ## Fidelity contract
 

@@ -1,0 +1,21 @@
+[
+  {
+    "type": "readers.text",
+    "filename": "tests/fixtures/las-pdal.csv"
+  },
+  {
+    "type": "writers.las",
+    "filename": "tests/fixtures/valid/las-pdal.laz",
+    "compression": true,
+    "minor_version": 4,
+    "dataformat_id": 8,
+    "a_srs": "EPSG:4978",
+    "scale_x": 0.01,
+    "scale_y": 0.01,
+    "scale_z": 0.01,
+    "offset_x": 1000.0,
+    "offset_y": 2000.0,
+    "offset_z": -10.0,
+    "extra_dims": "temperature=float"
+  }
+]

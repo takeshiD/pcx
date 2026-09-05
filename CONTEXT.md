@@ -28,6 +28,22 @@ _Avoid_: Static frame
 A named per-point attribute, such as `x`, `intensity`, or `ring`, together with its data representation and optional meaning.
 _Avoid_: Property, dimension
 
+**Coordinate Transform**:
+The per-axis scale and offset that relate stored integer coordinates to spatial coordinates without changing their coordinate reference system.
+_Avoid_: Quantization settings
+
+**Coordinate Reference System (CRS)**:
+The spatial reference that gives coordinates their geodetic or projected meaning.
+_Avoid_: Frame ID, projection string
+
+**Classification**:
+The ASPRS class assigned to a point, distinct from its synthetic, key-point, withheld, and overlap flags.
+_Avoid_: Label, class flags
+
+**Extra Dimension**:
+A vendor- or application-defined Point Field described by LAS Extra Bytes metadata.
+_Avoid_: Padding, unknown bytes
+
 ## Processing
 
 **Selection**:

@@ -7,9 +7,9 @@ description: Accepted format boundaries and fidelity rules.
 
 | Boundary | Read | Write | Status |
 | --- | --- | --- | --- |
-| MCAP container | Container metadata with `pcx info` | No | Available for inspection |
+| MCAP container | Metadata and encoded records | One-message container passthrough | Available |
 | ROS 2 `sensor_msgs/msg/PointCloud2` | Strict CDR decoding | No | Available |
-| PCD | No | Binary and ASCII | Available |
+| PCD | ASCII and little-endian binary | Binary and ASCII | Reader adapter available; no input CLI command yet |
 | PLY 1.0 | Scalar vertices in ASCII and both binary byte orders | ASCII and both binary byte orders | Adapter available; no CLI command yet |
 
 LAS/LAZ and terminal rendering are later work. AWS/S3 transports and cloud credentials are not product features.
@@ -52,6 +52,11 @@ The reader parses at most a 64 KiB header, reports the exact point-column
 allocation, and requires a sufficient materialization budget before allocating
 those columns. Payload I/O is synchronous and fixed-buffered; the encoded file
 is never loaded wholesale.
+
+MCAP passthrough retains the selected encoded Message and its exact
+Channel/Schema relationship, together with recording-level attachments,
+metadata, and private records. Derived container structure is rebuilt with a
+fixed bounded-memory policy.
 
 ## Fidelity contract
 

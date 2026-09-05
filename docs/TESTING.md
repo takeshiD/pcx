@@ -101,6 +101,12 @@ Minimum MCAP cases:
 - missing summary;
 - zstd/LZ4 decompression failure;
 - PointCloud2 Channel whose payload uses the wrong encoding.
+- passthrough of attachments, metadata, private records, exact Schema/Channel
+  IDs, message payload, sequence, log time, and publish time;
+- explicit refusal of unknown future standard records that cannot be
+  faithfully rewritten;
+- byte-deterministic zstd and LZ4 passthrough output for identical inputs and
+  options.
 
 Minimum PLY cases:
 

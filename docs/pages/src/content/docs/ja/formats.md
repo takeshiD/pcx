@@ -7,9 +7,9 @@ description: 採用するフォーマット境界と忠実性の規則。
 
 | 境界 | 読み込み | 書き込み | 状態 |
 | --- | --- | --- | --- |
-| MCAP コンテナ | `pcx info`によるcontainer metadata | なし | 調査機能を利用可能 |
+| MCAP コンテナ | metadataとencoded record | 1 message container passthrough | 利用可能 |
 | ROS 2 `sensor_msgs/msg/PointCloud2` | 厳密な CDR デコード | なし | 利用可能 |
-| PCD | なし | binary / ASCII | 利用可能 |
+| PCD | ASCII と little-endian binary | binary / ASCII | reader adapter は利用可能、input CLI command は未実装 |
 | PLY 1.0 | ASCII と両方の binary byte order の scalar vertex | ASCII と両方の binary byte order | adapter は利用可能、CLI command は未実装 |
 
 LAS/LAZ、ターミナル描画は将来の対象です。AWS/S3 転送やクラウド認証情報は製品機能に含めません。
@@ -50,6 +50,10 @@ shape を暗黙に破棄せず拒否します。
 reader は最大 64 KiB の header のみを parse し、point column の正確な allocation
 量を提示します。十分な materialization budget が渡されるまで column を確保しません。
 payload I/O は synchronous かつ固定 buffer で、encoded file 全体を読み込みません。
+
+MCAP passthroughは選択したencoded Messageと正確なChannel／Schema関係に加え、
+recording-levelのattachment、metadata、private recordを保持します。派生container
+構造は固定されたbounded-memory policyで再構築します。
 
 ## 忠実性の契約
 

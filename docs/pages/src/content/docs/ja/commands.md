@@ -12,6 +12,8 @@ pcx info INPUT.mcap [--json]
 pcx topics INPUT.mcap [--json]
 pcx extract INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
   -o OUTPUT.pcd|- [--encoding binary|ascii] [--memory-limit BYTES] [--force]
+pcx passthrough INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
+  -o OUTPUT.mcap|- [--compression none|zstd|lz4] [--memory-limit BYTES] [--force]
 ```
 
 `pcx info`はPoint FrameをdecodeせずにMCAP Sourceをstreamingで調査します。human outputとversion付きJSONはstdoutへ出力され、成功時のstderrは空です。
@@ -26,5 +28,15 @@ pcx extract INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
 ```
 
 `--frame`は選択Topicに一致するmessage内の0-based indexです。`--at`はrecording開始から`83.2s`のようなduration以降で最初のframeを選びます。selectorの一方とfileまたはstdout sinkを明示します。binary PCDがdefaultです。Topic不在、範囲外、破損message、memory budgetを保証できない処理は、outputを確定する前に失敗します。
+
+## encoded MCAP passthrough
+
+`pcx passthrough`はPointCloud2やpoint fieldをdecodeせず、encoded messageを1件
+選択します。Message payload、sequence、time、正確なChannelとoptional Schemaの
+関係、recording-levelのattachment／metadata、application-private recordを保持
+します。Container構造、statistics、CRCは再生成し、writer memoryをboundするため
+attachment／metadata indexは省略します。意味が未定義のunknown future standard
+recordは明示的に拒否します。compressionはsingle-threaded deterministic zstdが
+defaultで、`none`とdeterministic LZ4も選択できます。
 
 診断は stderr、データと JSON は stdout に出力します。JSON は `schema_version` を持ちます。既存ファイルは `--force` なしでは上書きせず、割り込み時は一時ファイルを除去して `130` を返します。

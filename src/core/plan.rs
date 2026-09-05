@@ -283,7 +283,7 @@ impl Planner {
         }
 
         let mode = match job.kind() {
-            JobKind::Info | JobKind::Topics => ExecutionMode::Container,
+            JobKind::Info | JobKind::Topics | JobKind::Passthrough => ExecutionMode::Container,
             JobKind::Extract => ExecutionMode::SemanticPointFrame,
         };
         let breakdown = ManagedMemoryBreakdown {

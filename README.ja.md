@@ -4,7 +4,7 @@
 
 `pcx`は、edge Linux上にある点群recordingをshellから調査・縮小するためのtoolboxです。
 
-> **開発状況:** v0.1の初期開発段階です。実行ファイルは`pcx info`、`pcx topics`、1 frameの`pcx extract`、`--help`、`--version`を提供します。
+> **開発状況:** 開発中です。実行ファイルはMCAP調査、1 frameのPCD抽出、1 messageのfaithfulなMCAP passthroughを提供します。
 
 ## なぜpcxか
 
@@ -25,6 +25,8 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 | human／JSON出力によるMCAP Topic一覧 | 利用可能 |
 | ROS 2 `PointCloud2` frame抽出 | 利用可能 |
 | binary／ASCII PCD出力 | 利用可能 |
+| strict PCD reader（CLI integration は今後） | 内部で利用可能 |
+| encoded 1 message MCAP passthrough | 利用可能 |
 | crop、field選択、frame単位voxel | 計画中 |
 | PLY scalar-vertex adapter（CLI integration は今後） | 内部で利用可能 |
 | LAS/LAZ、terminal rendering | 計画中 |
@@ -66,12 +68,23 @@ pcx extract run.mcap \
   --topic /lidar/points \
   --frame 0 \
   -o frame.pcd
+pcx passthrough run.mcap \
+  --topic /lidar/points \
+  --frame 0 \
+  --compression zstd \
+  -o selected.mcap
 ```
 
 `--frame INDEX`と`--at DURATION`のどちらか一方を指定します。binary PCDが
 defaultで、text PCDには`--encoding ascii`を使います。`--memory-limit BYTES`
 はmanaged memoryのhard limitです。outputにはfile pathまたはstdoutを表す
 `-`を明示します。
+
+`pcx passthrough`はpoint fieldをdecodeせず、同じselectorを適用します。選択した
+encoded MessageとChannel／Schema関係に加え、recording-levelのattachment、
+metadata、application-private recordを保持します。派生container構造、statistics、
+CRCはdeterministicに再生成し、memoryをboundするためattachment／metadata indexは
+省略します。
 
 transferは既存のshell toolに委ねます。
 

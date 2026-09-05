@@ -19,10 +19,15 @@ description: What pcx implements today and what comes next.
 4. select one Point Frame by index or MCAP log time;
 5. write binary or ASCII PCD.
 
+## Available format additions
+
+- faithful one-message encoded MCAP passthrough.
+- strict ASCII and little-endian-binary PCD reader adapter.
+
 ## Later milestones
 
 - **Reduction:** field selection, crop, statistics and frame-local voxel sampling.
-- **Formats:** PCD input, PLY CLI integration, LAS/LAZ and reduced MCAP output.
+- **Formats:** PCD input CLI integration, PLY CLI integration and LAS/LAZ.
 
 The scalar-vertex PLY reader/writer adapter is implemented behind the common
 schema; a user-facing command is not yet exposed.

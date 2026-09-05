@@ -18,7 +18,8 @@ use crate::{
         SourceSpec, write_output,
     },
     mcap::{
-        self, DiscoveredChannel, ProbeError, SelectionError, Source, SourceOptions, TopicDiscovery,
+        self, DiscoveredChannel, PassthroughCompression, PassthroughError, ProbeError,
+        SelectionError, Source, SourceOptions, TopicDiscovery,
     },
     pcd::{self, Encoding},
     ros2,
@@ -122,7 +123,7 @@ fn report_error(error: &Error) -> ExitStatus {
     name = "pcx",
     version,
     about = "Inspect and reduce point-cloud recordings on edge Linux systems",
-    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nInspect MCAP metadata and Topics, or extract one ROS 2 PointCloud2 frame to PCD."
+    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nInspect MCAP metadata and Topics, extract one ROS 2 PointCloud2 frame to PCD, or copy one selected encoded message into a reduced MCAP."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -137,6 +138,8 @@ enum Command {
     Topics(TopicsArgs),
     /// Extract exactly one ROS 2 PointCloud2 Point Frame as PCD.
     Extract(ExtractArgs),
+    /// Copy one selected encoded message into a faithful reduced MCAP.
+    Passthrough(PassthroughArgs),
 }
 
 #[derive(Debug, Args)]
@@ -217,6 +220,64 @@ struct ExtractArgs {
     memory_limit: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum McapCompression {
+    None,
+    Zstd,
+    Lz4,
+}
+
+impl From<McapCompression> for PassthroughCompression {
+    fn from(value: McapCompression) -> Self {
+        match value {
+            McapCompression::None => Self::None,
+            McapCompression::Zstd => Self::Zstd,
+            McapCompression::Lz4 => Self::Lz4,
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("selector")
+        .required(true)
+        .multiple(false)
+        .args(["frame", "at"])
+))]
+struct PassthroughArgs {
+    /// MCAP Source containing the encoded message.
+    #[arg(value_name = "INPUT.mcap")]
+    input: PathBuf,
+
+    /// Topic whose encoded messages are selected.
+    #[arg(long, value_name = "TOPIC")]
+    topic: String,
+
+    /// Zero-based message index after Topic selection.
+    #[arg(long, value_name = "INDEX")]
+    frame: Option<u64>,
+
+    /// First message at or after this duration from recording start.
+    #[arg(long, value_name = "DURATION", value_parser = parse_duration)]
+    at: Option<Duration>,
+
+    /// Output MCAP path, or '-' for binary-safe stdout.
+    #[arg(short, long, value_name = "PATH|-", required = true)]
+    output: PathBuf,
+
+    /// Replace an existing output file.
+    #[arg(long)]
+    force: bool,
+
+    /// Deterministic output chunk compression.
+    #[arg(long, value_enum, default_value = "zstd")]
+    compression: McapCompression,
+
+    /// Hard managed-memory limit in bytes.
+    #[arg(long, value_name = "BYTES", default_value_t = 512 * 1024 * 1024_u64)]
+    memory_limit: u64,
+}
+
 /// Parse command-line arguments without terminating the process.
 pub fn try_run_from<I, T>(args: I) -> Result<(), clap::Error>
 where
@@ -256,6 +317,7 @@ fn run(cli: Cli, output: &mut impl Write) -> Result<(), RunFailure> {
         Some(Command::Info(args)) => run_info(args, output),
         Some(Command::Topics(args)) => run_topics(args, output),
         Some(Command::Extract(args)) => run_extract(args),
+        Some(Command::Passthrough(args)) => run_passthrough(args),
         None => {
             Cli::command()
                 .write_help(output)
@@ -263,6 +325,54 @@ fn run(cli: Cli, output: &mut impl Write) -> Result<(), RunFailure> {
             writeln!(output).map_err(RunFailure::output)
         }
     }
+}
+
+fn run_passthrough(args: PassthroughArgs) -> Result<(), RunFailure> {
+    let source_spec = SourceSpec::file(args.input.clone()).map_err(RunFailure::core)?;
+    let destination = if args.output.as_os_str() == "-" {
+        if args.force {
+            return Err(RunFailure::core(Error::new(
+                ErrorCategory::Usage,
+                "--force is only valid for file output",
+            )));
+        }
+        Destination::stdout()
+    } else {
+        Destination::file(args.output, args.force).map_err(RunFailure::core)?
+    };
+    let selector = match (args.frame, args.at) {
+        (Some(index), None) => FrameSelector::Index(index),
+        (None, Some(duration)) => FrameSelector::At(duration),
+        _ => unreachable!("clap requires exactly one frame selector"),
+    };
+    let job = JobSpec::passthrough(source_spec, args.topic, selector, destination.clone())
+        .map_err(RunFailure::core)?;
+    let options = SourceOptions::default();
+    plan_passthrough_job(job.clone(), options, args.memory_limit)?;
+
+    let file = File::open(job.source().path()).map_err(|source| RunFailure {
+        category: ErrorCategory::Io,
+        message: format!(
+            "failed to open Source '{}': {source}",
+            job.source().path().display()
+        ),
+        broken_pipe: false,
+    })?;
+    let mut source = Source::new(file, options).map_err(probe_failure)?;
+    let (topic, selector, _) = job.passthrough_selection().expect("passthrough selection");
+    let passthrough =
+        mcap::plan_passthrough(&mut source, topic, selector).map_err(passthrough_failure)?;
+
+    let handler = InterruptHandler::install().map_err(|error| RunFailure {
+        category: ErrorCategory::Internal,
+        message: format!("could not install interrupt handler: {error}"),
+        broken_pipe: false,
+    })?;
+    write_output(&destination, &handler.cancellation, |writer| {
+        mcap::write_passthrough(&mut source, writer, &passthrough, args.compression.into())
+    })
+    .map_err(RunFailure::core)?;
+    Ok(())
 }
 
 fn run_extract(args: ExtractArgs) -> Result<(), RunFailure> {
@@ -433,6 +543,30 @@ fn plan_selection_job(
         .map_err(RunFailure::core)
 }
 
+fn plan_passthrough_job(
+    job: JobSpec,
+    options: SourceOptions,
+    limit_bytes: u64,
+) -> Result<ExecutionPlan, RunFailure> {
+    let retained_input_bytes = options.passthrough_retained_bytes().ok_or_else(|| {
+        RunFailure::core(Error::new(
+            ErrorCategory::Resource,
+            "MCAP passthrough retained-input bound overflowed",
+        ))
+    })?;
+    let requirements = PipelineMemoryRequirements::new(
+        ByteBound::bounded(retained_input_bytes),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+        ByteBound::bounded(0),
+    );
+    Planner::new()
+        .plan(job, requirements, limit_bytes)
+        .map_err(RunFailure::core)
+}
+
 fn probe_failure(error: ProbeError) -> RunFailure {
     RunFailure {
         category: error.category(),
@@ -442,6 +576,14 @@ fn probe_failure(error: ProbeError) -> RunFailure {
 }
 
 fn selection_failure(error: SelectionError) -> RunFailure {
+    RunFailure {
+        category: error.category(),
+        message: error.to_string(),
+        broken_pipe: false,
+    }
+}
+
+fn passthrough_failure(error: PassthroughError) -> RunFailure {
     RunFailure {
         category: error.category(),
         message: error.to_string(),
@@ -625,6 +767,56 @@ mod tests {
     fn accepts_topics_human_and_json_forms() {
         assert!(try_run_from(["pcx", "topics", "recording.mcap"]).is_ok());
         assert!(try_run_from(["pcx", "topics", "recording.mcap", "--json"]).is_ok());
+    }
+
+    #[test]
+    fn accepts_passthrough_with_exactly_one_selector() {
+        assert!(
+            try_run_from([
+                "pcx",
+                "passthrough",
+                "recording.mcap",
+                "--topic",
+                "/points",
+                "--frame",
+                "0",
+                "--output",
+                "selected.mcap",
+                "--compression",
+                "lz4",
+            ])
+            .is_ok()
+        );
+        assert!(
+            try_run_from([
+                "pcx",
+                "passthrough",
+                "recording.mcap",
+                "--topic",
+                "/points",
+                "--at",
+                "10ms",
+                "--output",
+                "-",
+            ])
+            .is_ok()
+        );
+        assert!(
+            try_run_from([
+                "pcx",
+                "passthrough",
+                "recording.mcap",
+                "--topic",
+                "/points",
+                "--frame",
+                "0",
+                "--at",
+                "10ms",
+                "--output",
+                "-",
+            ])
+            .is_err()
+        );
     }
 
     #[test]

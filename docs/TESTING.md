@@ -17,7 +17,8 @@ Fast, deterministic tests live beside their modules.
 - `ros2`: CDR alignment, endian markers, sequence lengths, PointField counts and offsets, organized rows, malformed extents.
 - `pcd`: headers, binary/ASCII values, arbitrary fields, non-finite values, deterministic formatting.
 - `ply`: bounded headers, both binary byte orders, ASCII values, arbitrary scalar properties, fidelity refusals.
-- `ops`: boundaries and invariants for every semantic operator.
+- `ops`: boundaries and invariants for every semantic operator, including
+  projection camera, aspect, z-buffer, color, and degenerate-bounds policies.
 
 ### Property tests
 
@@ -70,6 +71,7 @@ Every checked-in fixture records its source, generator command/version, license,
 | MCAP output | semantic records, Channel/Schema relationships, message payload and log time |
 | PCD header | reviewed golden text |
 | PCD points | independently decoded semantic values |
+| CPU projection | reviewed synthetic raster cells plus independent policy assertions |
 | CLI text/JSON | reviewed snapshots with volatile values normalized |
 | Errors | typed code and structured context, never backtraces |
 

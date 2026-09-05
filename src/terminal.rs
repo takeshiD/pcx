@@ -20,6 +20,8 @@ use std::{
     time::Duration,
 };
 
+pub mod kitty;
+
 /// Maximum time automatic detection waits for an injected terminal query.
 pub const DETECTION_TIMEOUT: Duration = Duration::from_millis(100);
 

@@ -36,6 +36,11 @@ and typed capability-query results. They do not alter terminal modes or emit
 real control sequences. Coverage includes query timeout, SSH, tmux, missing
 `TERM`, hostile environment bytes, and redirected stdout.
 
+Kitty encoder tests compare every escape byte with reviewed hexadecimal golden
+fixtures. They also prove fixed chunk/payload/memory bounds, transparent empty
+cells, zero output for fallback selections, and image-scoped cleanup after an
+interrupted write.
+
 ### CLI contract tests
 
 The compiled process is exercised for:

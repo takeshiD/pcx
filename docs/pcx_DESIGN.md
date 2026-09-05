@@ -39,10 +39,12 @@ covered by committed end-to-end fixtures.
 
 ### 2.2 Later phases
 
-Field selection, crop, statistics, frame-local voxel reduction, PCD input CLI
-integration, PLY CLI integration, LAS/LAZ, and terminal rendering may follow
-v0.1. The strict PCD reader adapter and faithful one-message MCAP container
-passthrough are available.
+Field selection, crop, statistics, frame-local voxel reduction, and bounded
+LAS/LAZ library I/O are available after v0.1. The strict PCD reader, faithful
+PLY adapter, and one-message MCAP container passthrough are also available;
+their remaining CLI integrations may follow later. The CPU rasterizer,
+capability selection, and Unicode backend are implemented; Kitty and Sixel
+remain follow-up work.
 
 ### 2.3 Explicit non-goals
 
@@ -205,6 +207,14 @@ lists, 64-bit integers, vector fields, organized shape, non-default frame
 metadata, and non-portable ASCII float values fail before output or
 materialization. Header probing is bounded and supplies the common Planner with
 an exact column allocation before payload decoding.
+
+### LAS and LAZ
+
+Use the maintained pure-Rust `las` crate with serial `laz` compression. Read
+and write bounded common-schema batches synchronously. Keep scale/offset, CRS
+and the complete LAS header alongside the Static Cloud; expose standard
+attributes as typed Point Fields and retain Extra Bytes plus their descriptors.
+Require category-specific authorization before coordinate quantization.
 
 ## 10. Operators
 

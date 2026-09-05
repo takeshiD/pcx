@@ -22,6 +22,7 @@ src/
 ├── ros2/          strict CDR and PointCloud2 adapter
 ├── pcd/           PCD reader/writer adapter
 ├── ply/           faithful scalar-vertex PLY adapter
+├── las/           bounded LAS/LAZ reader/writer adapter
 ├── ops/           semantic point operators
 └── terminal/      bounded encoders for the common CPU raster
 ```
@@ -34,6 +35,7 @@ mcap -> core
 ros2 -> core
 pcd  -> core
 ply  -> core
+las  -> core
 ops  -> core
 terminal -> ops
 core -> standard library and domain-focused utilities only
@@ -166,6 +168,29 @@ Backend capability probing remains outside encoders.
 ## Fidelity contract
 
 The Planner compares source, operator, encoder, and sink capabilities. A job is rejected when the requested output cannot represent retained fields or temporal/spatial metadata. Loss requires an explicit category-specific authorization; generic warning-only loss is not accepted.
+
+### LAS and LAZ mapping
+
+The LAS adapter uses the pure-Rust `las` crate with serial `laz` support. It
+returns caller-bounded `PointBatch` values and retains a shared copy of the
+complete LAS header as Static Cloud spatial metadata. X/Y/Z become semantic
+`f64` Point Fields; the original per-axis scale/offset remains the Coordinate
+Transform used for writing. CRS VLRs/EVLRs are retained byte-for-byte.
+
+Classification is a `u8` Point Field, with synthetic, key-point, withheld and
+overlap represented as separate `u8` flags. All standard attributes supported
+by LAS point formats 0–10 map to named typed Point Fields. Extra Bytes map to
+one ordered `u8[count]` field named `las_extra_bytes`; the complete header
+retains its Extra Bytes descriptors. Writing requires the exact mapping and
+refuses off-grid coordinates unless `FidelityLoss::Representation` is
+explicitly authorized.
+
+The read preflight accounts for a reusable raw point slab, all decoded
+columns, column tables, and retained header records before allocating a batch.
+LAZ uses the serial codec: decompression writes only into that bounded slab,
+and compression stages one raw point while the codec maintains fixed-size
+chunk state. Writers require a declared maximum point count so the growing LAZ
+chunk table is bounded before output begins.
 
 ## Managed-memory contract
 

@@ -15,3 +15,4 @@ ADRs record hard-to-reverse choices with non-obvious trade-offs.
 11. [Gate tagged releases before irreversible publication](./0011-gate-tagged-releases-before-irreversible-publication.md) — superseded
 12. [Wrap the official MCAP reader and decode PointCloud2 strictly](./0012-wrap-the-official-mcap-reader-and-decode-pointcloud2-strictly.md)
 13. [Publish through shared Cachix and crates.io OIDC](./0013-publish-through-shared-cachix-and-crates-io-oidc.md)
+14. [Use las-rs with explicit LAS mappings](./0014-use-las-rs-with-explicit-las-mappings.md)

@@ -19,7 +19,7 @@ Sources: [ADR-0001](../../docs/adr/0001-prove-the-mcap-workflow-in-v0-1.md), [AD
 
 ## Package and module boundaries
 
-Sources: [ADR-0003](../../docs/adr/0003-separate-container-records-from-point-frames.md), [ADR-0005](../../docs/adr/0005-keep-the-processing-core-synchronous.md), [ADR-0010](../../docs/adr/0010-publish-one-rust-package-with-deep-modules.md), and [ADR-0012](../../docs/adr/0012-wrap-the-official-mcap-reader-and-decode-pointcloud2-strictly.md).
+Sources: [ADR-0003](../../docs/adr/0003-separate-container-records-from-point-frames.md), [ADR-0005](../../docs/adr/0005-keep-the-processing-core-synchronous.md), [ADR-0010](../../docs/adr/0010-publish-one-rust-package-with-deep-modules.md), [ADR-0012](../../docs/adr/0012-wrap-the-official-mcap-reader-and-decode-pointcloud2-strictly.md), and [ADR-0014](../../docs/adr/0014-use-las-rs-with-explicit-las-mappings.md).
 
 - Keep one publishable Rust package named `pcx-cli`, with library and binary targets and an installed executable named `pcx`.
 - Keep core processing, MCAP, ROS 2 message handling, and PCD as deep modules behind `src/lib.rs`; preserve test seams without splitting them into separately published crates.
@@ -32,10 +32,11 @@ Sources: [ADR-0003](../../docs/adr/0003-separate-container-records-from-point-fr
 - Wrap the official Rust `mcap` crate's sans-IO reader with bounded synchronous `Read + Seek`; do not implement the MCAP container or buffer a whole recording.
 - Keep Zstandard and LZ4 enabled in the single feature set used by Cargo, Nix, Cachix, and release binaries.
 - Decode only ROS 2 `sensor_msgs/msg/PointCloud2` with a small strict CDR decoder. Do not add a ROS runtime or general dynamic message engine without a superseding ADR.
+- Keep LAS/LAZ in a deep synchronous adapter using the serial `las`/`laz` path. Decode in caller-bounded batches, retain the complete LAS header alongside common-schema batches, and do not introduce Rayon or native LASzip.
 
 ## Point representation and fidelity
 
-Sources: [ADR-0002](../../docs/adr/0002-reject-unplannable-resource-and-data-loss-risks.md), [ADR-0003](../../docs/adr/0003-separate-container-records-from-point-frames.md), and [ADR-0004](../../docs/adr/0004-use-view-and-columnar-point-representations.md).
+Sources: [ADR-0002](../../docs/adr/0002-reject-unplannable-resource-and-data-loss-risks.md), [ADR-0003](../../docs/adr/0003-separate-container-records-from-point-frames.md), [ADR-0004](../../docs/adr/0004-use-view-and-columnar-point-representations.md), and [ADR-0014](../../docs/adr/0014-use-las-rs-with-explicit-las-mappings.md).
 
 - Preserve point fields and temporal and spatial metadata. Never discard them silently.
 - Require explicit user authorization for lossy conversion and temporary spooling.
@@ -43,6 +44,8 @@ Sources: [ADR-0002](../../docs/adr/0002-reject-unplannable-resource-and-data-los
 - Retain views for inspection and direct extraction when possible; materialize columns on demand for point operators.
 - Judge semantic equivalence by field names, types, counts, values, timestamps, and frame identity, not padding or byte layout.
 - When an operation changes point count, mark an organized cloud as explicitly unorganized.
+- Map LAS coordinates to semantic `f64` X/Y/Z Point Fields and retain their Coordinate Transform separately. Reject coordinate quantization unless representation loss is explicitly authorized.
+- Map LAS Classification separately from its synthetic, key-point, withheld, and overlap flags. Preserve Extra Dimensions as ordered raw bytes together with their descriptor records when their typed meaning is not safely known.
 
 ## Resource and output safety
 

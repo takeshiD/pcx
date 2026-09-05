@@ -2,7 +2,8 @@
 
 This directory contains the minimal synthetic format corpus established by
 issue #15, extended with strict PointCloud2 cases for issue #9, strict PCD
-reader cases for issue #22, and scalar PLY cases for issue #24. It is test data
+reader cases for issue #22, scalar PLY cases for issue #24, and independent
+LAS/LAZ cases for issue #25. It is test data
 only: the generator does not parse inputs and does not implement any `pcx`
 product adapter.
 
@@ -23,6 +24,16 @@ The Rust generator emits deterministic synthetic CDR/PointCloud2, PCD, and PLY
 bytes plus a minimal raw MCAP seed. `mcap recover --compression zstd` rewrites that
 seed through the official MCAP implementation. `SHA256SUMS` is regenerated
 last. Repeating the command must leave the worktree unchanged.
+
+`las-pdal.json` and `laz-pdal.json` convert `las-pdal.csv` with PDAL 2.9.3.
+They produce LAS 1.4 point format 8 fixtures with a 0.01 scale, explicit
+offsets, EPSG:4978 WKT CRS, classification flags, GPS/color/NIR fields, and a
+`float32` Extra Dimension named `temperature`:
+
+```bash
+nix shell nixpkgs#pdal --command pdal pipeline tests/fixtures/las-pdal.json
+nix shell nixpkgs#pdal --command pdal pipeline tests/fixtures/laz-pdal.json
+```
 
 ## Provenance and license
 
@@ -47,6 +58,8 @@ Primary format references:
 - [OMG DDS-XTypes 1.3](https://www.omg.org/spec/DDS-XTypes/1.3/About-DDS-XTypes/)
 - [PCD v0.7 format](https://pointclouds.org/documentation/tutorials/pcd_file_format.html)
 - [PLY format description](https://paulbourke.net/dataformats/ply/)
+- [ASPRS LAS specification repository](https://github.com/ASPRSorg/LAS)
+- [PDAL LAS writer documentation](https://pdal.io/en/stable/stages/writers.las.html)
 
 ## Valid corpus and oracle checks
 
@@ -74,6 +87,8 @@ frame `map`, with two points and these ordered Point Fields:
 | `valid/scalar-vertices-ascii.ply` | Generator 1.2.0 | Reviewed PLY 1.0 header and independently tokenized rows exercise all eight supported scalar types and unknown property order |
 | `valid/scalar-vertices-binary-little-endian.ply` | Generator 1.2.0 | Independent offset decoder verifies a 26-byte vertex record and little-endian scalar bits |
 | `valid/scalar-vertices-binary-big-endian.ply` | Generator 1.2.0 | Independent offset decoder verifies the same values with big-endian scalar bits |
+| `valid/las-pdal.las` | PDAL 2.9.3 from `las-pdal.csv` | Two points, LAS 1.4 format 8, scale/offset, EPSG:4978 WKT, standard attributes and `temperature` Extra Dimension match the reviewed CSV |
+| `valid/las-pdal.laz` | PDAL 2.9.3 from `las-pdal.csv` | Compressed form has the same semantic oracle and remains readable one caller-bounded batch at a time |
 
 The PLY fixtures contain two unorganized vertices and these ordered scalar
 properties: `signed_byte`, `unsigned_byte`, `signed_short`, `unsigned_short`,

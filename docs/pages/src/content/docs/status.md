@@ -27,12 +27,15 @@ description: What pcx implements today and what comes next.
 ## Later milestones
 
 - **Reduction:** field selection, crop, statistics and frame-local voxel sampling.
-- **Formats:** PCD input CLI integration, PLY CLI integration and LAS/LAZ.
+- **Formats:** PCD input CLI integration, PLY CLI integration and LAS/LAZ CLI integration.
 
 The scalar-vertex PLY reader/writer adapter is implemented behind the common
 schema; a user-facing command is not yet exposed.
-- **Terminal rendering:** deterministic CPU rasterizer and Unicode backend are
-  available internally; capability selection, Kitty, and Sixel follow.
+The bounded LAS/LAZ reader/writer adapter is also implemented behind the
+common schema; its user-facing commands remain future work.
+
+- **Terminal rendering:** deterministic CPU rasterizer, capability selection,
+  and Unicode backend are available internally; Kitty and Sixel follow.
 - **Hardening:** longer fuzz runs, performance baselines, musl investigation and resource tuning.
 
 ## Explicit non-goals

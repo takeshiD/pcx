@@ -27,10 +27,11 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 | Binary and ASCII PCD output                        | Available             |
 | Strict PCD reader (CLI integration later)          | Available internally  |
 | Encoded one-message MCAP passthrough               | Available             |
+| Bounded synchronous LAS/LAZ library I/O            | Available             |
 | Crop, field selection, frame-local voxel reduction | Planned               |
 | PLY scalar-vertex adapter (CLI integration later)  | Available internally  |
-| CPU projection and Unicode terminal renderer       | Available internally  |
-| LAS/LAZ and image-protocol terminal rendering      | Planned               |
+| CPU projection, terminal selection, and Unicode    | Available internally  |
+| LAS/LAZ CLI commands, Kitty, and Sixel              | Planned               |
 | AWS/S3 upload and cloud credentials                | Out of scope          |
 | macOS and Windows support                          | Undecided future work |
 

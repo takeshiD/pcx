@@ -5,6 +5,7 @@
 
 pub mod cli;
 pub mod core;
+pub mod las;
 pub mod mcap;
 pub mod ops;
 pub mod pcd;

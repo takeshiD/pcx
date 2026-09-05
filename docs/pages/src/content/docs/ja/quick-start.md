@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: MCAP metadata調査と、残りのv0.1 workflow。
+description: MCAP metadata調査と1 Point Frameの抽出。
 ---
 
 ## 現在利用可能
@@ -11,7 +11,7 @@ pcx --version
 pcx info run.mcap
 ```
 
-## v0.1で予定
+## 1 Point Frameを抽出
 
 ```bash
 pcx topics run.mcap --json

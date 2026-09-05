@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: Inspect MCAP metadata and preview the remaining v0.1 workflow.
+description: Inspect MCAP metadata and extract one Point Frame.
 ---
 
 ## Available now
@@ -11,7 +11,7 @@ pcx --version
 pcx info run.mcap
 ```
 
-## Planned for v0.1
+## Extract one Point Frame
 
 ```bash
 pcx topics run.mcap --json

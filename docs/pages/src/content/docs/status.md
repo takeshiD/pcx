@@ -11,9 +11,9 @@ description: What pcx implements today and what comes next.
 - accepted architecture, domain language, ADRs and test strategy;
 - Nix, CI, Pages and release automation foundation.
 
-## v0.1 MCAP vertical slice — in progress
+## v0.1 MCAP vertical slice — available
 
-1. Topic, Channel, Schema, and message-count discovery — available;
+1. Topic, Channel, Schema, and message-count discovery;
 2. strict ROS 2 CDR decoding for `sensor_msgs/msg/PointCloud2`;
 3. zero-copy `PointView` where possible;
 4. select one Point Frame by index or MCAP log time;

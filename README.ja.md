@@ -4,7 +4,7 @@
 
 `pcx`は、edge Linux上にある点群recordingをshellから調査・縮小するためのtoolboxです。
 
-> **開発状況:** v0.1の初期開発段階です。実行ファイルは`pcx info`、`pcx topics`、`--help`、`--version`を提供します。point frame抽出は引き続き計画中です。
+> **開発状況:** v0.1の初期開発段階です。実行ファイルは`pcx info`、`pcx topics`、1 frameの`pcx extract`、`--help`、`--version`を提供します。
 
 ## なぜpcxか
 
@@ -23,8 +23,8 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 | `pcx --help`, `pcx --version` | 利用可能 |
 | `pcx info` MCAP metadata | 利用可能 |
 | human／JSON出力によるMCAP Topic一覧 | 利用可能 |
-| ROS 2 `PointCloud2` frame抽出 | v0.1で予定 |
-| binary／ASCII PCD出力 | v0.1で予定 |
+| ROS 2 `PointCloud2` frame抽出 | 利用可能 |
+| binary／ASCII PCD出力 | 利用可能 |
 | crop、field選択、frame単位voxel | 計画中 |
 | PLY、LAS/LAZ、terminal rendering | 計画中 |
 | AWS/S3 upload、cloud credential | 対象外 |
@@ -56,17 +56,21 @@ nix develop github:takeshiD/pcx
 
 ## v0.1 workflow
 
-MCAP metadata調査とTopic discoveryは現在利用可能です。extract commandは合意済みのv0.1設計です。
+MCAP metadata調査、Topic discovery、1 frameのextractは現在利用可能です。
 
 ```bash
 pcx info run.mcap
 pcx topics run.mcap --json
-# 計画中:
 pcx extract run.mcap \
   --topic /lidar/points \
   --frame 0 \
   -o frame.pcd
 ```
+
+`--frame INDEX`と`--at DURATION`のどちらか一方を指定します。binary PCDが
+defaultで、text PCDには`--encoding ascii`を使います。`--memory-limit BYTES`
+はmanaged memoryのhard limitです。outputにはfile pathまたはstdoutを表す
+`-`を明示します。
 
 transferは既存のshell toolに委ねます。
 

@@ -102,6 +102,14 @@ pub fn write<'a>(
     }
 }
 
+/// Check that a point representation can be written losslessly as PCD.
+///
+/// Callers use this during preflight, before creating an output sink. The
+/// writer repeats the check so direct callers retain the same guarantee.
+pub fn validate<'a>(points: impl Into<PointDataRef<'a>>) -> Result<(), Error> {
+    validate_schema(points.into().schema())
+}
+
 fn validate_schema(schema: &PointSchema) -> Result<(), Error> {
     if schema.fields().is_empty() {
         return Err(Error::EmptySchema);

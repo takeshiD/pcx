@@ -34,8 +34,8 @@ desktop environment, nor resident daemon.
 - human-readable and versioned JSON inspection output;
 - bounded managed memory and atomic file output.
 
-At the foundation stage, only `pcx --help` and `pcx --version` are implemented.
-Documentation labels planned commands until their tests pass.
+The v0.1 inspection and one-frame extraction commands are implemented and
+covered by committed end-to-end fixtures.
 
 ### 2.2 Later phases
 
@@ -77,11 +77,14 @@ Accepted v0.1 commands are:
 ```bash
 pcx info INPUT.mcap [--json]
 pcx topics INPUT.mcap [--json]
-pcx extract INPUT.mcap --topic TOPIC --frame INDEX [-o PATH|-] [--force]
+pcx extract INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
+  -o PATH|- [--encoding binary|ascii] [--memory-limit BYTES] [--force]
 ```
 
-`--frame` is zero-based among messages matching the selected topic. v0.1
-extracts exactly one frame.
+`--frame` is zero-based among messages matching the selected topic. `--at`
+selects the first frame at or after a duration from recording start. v0.1
+extracts exactly one frame, defaults to binary PCD, and requires an explicit
+file or stdout sink.
 
 ### Streams and failures
 

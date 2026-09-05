@@ -114,11 +114,25 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: cargo build --release --locked
-      - name: Archive binary
+      - name: Build release archive
         shell: bash
         run: |
           archive="pcx-${GITHUB_REF_NAME}-${{ matrix.arch }}.tar.xz"
-          tar -C target/release -cJf "${archive}" pcx
+          archive_root="${RUNNER_TEMP}/pcx-archive-${{ matrix.arch }}"
+          install -Dm755 target/release/pcx "${archive_root}/pcx"
+          install -Dm644 LICENSE "${archive_root}/LICENSE"
+          install -Dm644 .github/release/README.md "${archive_root}/README.md"
+          tar -C "${archive_root}" -cJf "${archive}" LICENSE README.md pcx
+      - name: Verify release archive contents
+        shell: bash
+        run: |
+          archive="pcx-${GITHUB_REF_NAME}-${{ matrix.arch }}.tar.xz"
+          expected=$'LICENSE\nREADME.md\npcx'
+          actual=$(tar -tJf "${archive}")
+          if [[ "${actual}" != "${expected}" ]]; then
+            printf 'Unexpected archive contents:\n%s\n' "${actual}" >&2
+            exit 1
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pcx-${{ matrix.arch }}

@@ -1,9 +1,10 @@
 # Parser and end-to-end fixtures
 
 This directory contains the minimal synthetic format corpus established by
-issue #15, extended with strict PointCloud2 cases for issue #9 and scalar PLY
-cases for issue #24. It is test data only: the generator does not parse inputs
-and does not implement any `pcx` product adapter.
+issue #15, extended with strict PointCloud2 cases for issue #9, strict PCD
+reader cases for issue #22, and scalar PLY cases for issue #24. It is test data
+only: the generator does not parse inputs and does not implement any `pcx`
+product adapter.
 
 ## Reproduction
 
@@ -69,6 +70,7 @@ frame `map`, with two points and these ordered Point Fields:
 | `valid/pointcloud2-reordered-fields-and-count.cdr` | Generator 1.1.0 | Strict decode preserves source field order and a two-element `uint8` field, and exercises every supported PointField datatype |
 | `valid/pointcloud2-binary.pcd` | Generator 1.0.0 | Reviewed PCD v0.7 header; independently decoded 32-byte binary body matches the value bits above |
 | `valid/pointcloud2-ascii.pcd` | Generator 1.0.0 | Reviewed PCD v0.7 header and two rows; semantic values match above (NaN payload is intentionally not preserved in ASCII) |
+| `valid/pcd-organized-unknown-fields-ascii.pcd` | Generator 1.2.0 | Independently authored 2-by-2 PCD with multi-element `descriptor`, `quality`, and `flag` fields; strict decode must preserve their order, representations, counts, values, and organized dimensions |
 | `valid/scalar-vertices-ascii.ply` | Generator 1.2.0 | Reviewed PLY 1.0 header and independently tokenized rows exercise all eight supported scalar types and unknown property order |
 | `valid/scalar-vertices-binary-little-endian.ply` | Generator 1.2.0 | Independent offset decoder verifies a 26-byte vertex record and little-endian scalar bits |
 | `valid/scalar-vertices-binary-big-endian.ply` | Generator 1.2.0 | Independent offset decoder verifies the same values with big-endian scalar bits |
@@ -104,6 +106,19 @@ the exact error wording is not a golden interface.
 | `malformed/pointcloud2-height-must-be-positive.cdr` | PointCloud2 height must be positive | PointCloud2 validation rejects `height=0` |
 | `malformed/pointcloud2-point-step-must-be-positive.cdr` | A nonempty cloud must have a positive `point_step` | PointCloud2 validation rejects `point_step=0` when `width * height` is nonzero |
 | `malformed/pcd-points-must-equal-width-times-height.pcd` | `POINTS` must equal `WIDTH * HEIGHT` | PCD header validation rejects `POINTS=1`, `WIDTH=2`, `HEIGHT=1` |
+| `malformed/pcd-directives-must-be-ordered.pcd` | Supported PCD directives must occur once in canonical order | Strict PCD header validation rejects `SIZE` before `FIELDS` |
+| `malformed/pcd-field-vectors-must-align.pcd` | `FIELDS`, `SIZE`, `TYPE`, and `COUNT` must have equal cardinality | Strict PCD header validation rejects one `SIZE` for two fields |
+| `malformed/pcd-field-type-size-must-be-supported.pcd` | Each `TYPE`/`SIZE` pair must map to a lossless common primitive | Strict PCD header validation rejects an eight-byte unsigned integer |
+| `malformed/pcd-field-count-must-be-positive.pcd` | Every PCD field count must be positive | Strict PCD header validation rejects `COUNT=0` |
+| `malformed/pcd-field-names-must-be-unique.pcd` | PCD field names must be unique | Common schema validation rejects the second field named `x` |
+| `malformed/pcd-dimensions-must-not-overflow.pcd` | Dimensions and point counts must fit checked platform arithmetic | Strict PCD header validation rejects an out-of-range width without allocation |
+| `malformed/pcd-height-must-be-positive.pcd` | PCD height must be positive | Strict PCD header validation rejects `HEIGHT=0` |
+| `malformed/pcd-viewpoint-must-be-preservable.pcd` | Unsupported spatial metadata must not be silently discarded | Strict PCD validation rejects a non-default viewpoint |
+| `malformed/pcd-compressed-must-be-rejected.pcd` | Compressed PCD is outside the supported subset | Strict PCD validation reports `binary_compressed` as unsupported |
+| `malformed/pcd-ascii-payload-must-be-complete.pcd` | ASCII payload scalar count must match the declared schema and dimensions | Strict PCD decoding rejects one value for two declared points |
+| `malformed/pcd-ascii-payload-must-not-have-extra-values.pcd` | ASCII payload must end after the declared scalar count | Strict PCD decoding rejects an extra value |
+| `malformed/pcd-binary-payload-must-be-exact.pcd` | Binary payload byte count must equal `POINTS * packed point size` | Strict PCD decoding rejects a three-byte payload for one `float32` field |
+| `malformed/pcd-binary-payload-must-not-have-extra-bytes.pcd` | Binary payload must end at its declared byte extent | Strict PCD decoding rejects a byte after one complete `float32` value |
 | `malformed/ply-list-properties-are-unsupported.ply` | The faithful subset accepts scalar vertex properties only | PLY header validation rejects the list before materialization |
 | `malformed/ply-int64-properties-are-unsupported.ply` | PLY 1.0 has no supported lossless 64-bit integer mapping | PLY header validation rejects `int64` |
 | `malformed/ply-format-endianness-must-be-known.ply` | The format must declare ASCII, little-endian binary, or big-endian binary | PLY header validation rejects an unknown byte order |

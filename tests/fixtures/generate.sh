@@ -25,6 +25,8 @@ install -Dm644 "$scratch/corpus/valid/pointcloud2-binary.pcd" \
   "$fixture_root/valid/pointcloud2-binary.pcd"
 install -Dm644 "$scratch/corpus/valid/pointcloud2-ascii.pcd" \
   "$fixture_root/valid/pointcloud2-ascii.pcd"
+install -Dm644 "$scratch/corpus/valid/pcd-organized-unknown-fields-ascii.pcd" \
+  "$fixture_root/valid/pcd-organized-unknown-fields-ascii.pcd"
 for fixture in \
   scalar-vertices-ascii.ply \
   scalar-vertices-binary-little-endian.ply \
@@ -62,6 +64,19 @@ install -Dm644 \
   "$scratch/corpus/malformed/pcd-points-must-equal-width-times-height.pcd" \
   "$fixture_root/malformed/pcd-points-must-equal-width-times-height.pcd"
 for fixture in \
+  pcd-directives-must-be-ordered.pcd \
+  pcd-field-vectors-must-align.pcd \
+  pcd-field-type-size-must-be-supported.pcd \
+  pcd-field-count-must-be-positive.pcd \
+  pcd-field-names-must-be-unique.pcd \
+  pcd-dimensions-must-not-overflow.pcd \
+  pcd-height-must-be-positive.pcd \
+  pcd-viewpoint-must-be-preservable.pcd \
+  pcd-compressed-must-be-rejected.pcd \
+  pcd-ascii-payload-must-be-complete.pcd \
+  pcd-ascii-payload-must-not-have-extra-values.pcd \
+  pcd-binary-payload-must-be-exact.pcd \
+  pcd-binary-payload-must-not-have-extra-bytes.pcd \
   ply-list-properties-are-unsupported.ply \
   ply-int64-properties-are-unsupported.ply \
   ply-format-endianness-must-be-known.ply \

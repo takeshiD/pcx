@@ -1,7 +1,7 @@
 # Terminal Capability and Rendering Contract
 
-Status: capability selection and Unicode rendering implemented. CLI integration,
-Kitty graphics, and Sixel remain separate work.
+Status: capability selection, Unicode rendering, and Kitty graphics encoding
+implemented. CLI integration and Sixel remain separate work.
 
 `pcx` treats terminal detection as a read-only policy decision. Detection does
 not render, does not write stdout or stderr, and accepts environment, TTY, and
@@ -165,3 +165,29 @@ that none reaches either output mode. Property tests cover arbitrary RGB8
 pairs and accept only CSI SGR sequences in TTY output; they reject OSC, DCS,
 APC, PM, and any unexpected C0/DEL byte. Non-TTY tests additionally prove that
 ESC is absent.
+
+## Kitty encoding
+
+The Kitty backend consumes the common CPU raster as streaming 32-bit RGBA.
+Occupied pixels retain their projected RGB color with full opacity; empty cells
+are transparent. Direct transmission uses RFC 4648 base64 payload chunks of at
+most 4096 bytes. Non-final chunks are exactly 4096 bytes and therefore aligned
+to four bytes as required by the protocol.
+
+Dimensions default to a strict 4096 by 4096 ceiling and the complete base64
+payload defaults to 64 MiB. Both limits are explicit inputs to encoder
+preflight. The encoder uses a fixed 7298-byte workspace and exposes that bound
+to the shared memory planner; it never materializes a second whole raster or
+payload.
+
+Kitty escape bytes are gated by the selection policy above. `auto` requires a
+positive typed query, while explicit `kitty` still requires TTY stdout.
+Selections of `unicode` or `plain` return a portable-fallback outcome and write
+no bytes. Environment claims such as `TERM=xterm-kitty` never authorize Kitty
+output by themselves.
+
+Each image has a caller-owned non-zero ID. Transmission uses `C=1`, so the
+terminal cursor does not move. Cancellation before the first chunk writes
+nothing; cancellation or failure after transmission begins attempts an
+ID-scoped hard delete, which also aborts an incomplete chunked upload. A caller
+can use the same bounded delete command during normal terminal teardown.

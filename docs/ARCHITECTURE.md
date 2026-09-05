@@ -37,7 +37,7 @@ pcd  -> core
 ply  -> core
 las  -> core
 ops  -> core
-terminal -> ops
+terminal -> core, ops
 core -> standard library and domain-focused utilities only
 ```
 
@@ -241,6 +241,11 @@ conservative policy documented in [`TERMINAL.md`](./TERMINAL.md). Automatic
 detection never queries non-TTY stdout, bounds an injected capability query to
 100 ms, and treats environment values as opaque data rather than control
 sequence fragments.
+
+Kitty encoding consumes only the terminal-neutral raster and an already-vetted
+backend selection. It streams bounded RGBA/base64 chunks without performing
+capability detection, preserves cursor position, and uses image-scoped cleanup
+after interruption.
 
 ## Decision records
 

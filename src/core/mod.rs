@@ -6,6 +6,7 @@
 mod error;
 mod job;
 mod plan;
+pub mod point;
 mod report;
 
 pub use error::{Error, ErrorCategory, Result};

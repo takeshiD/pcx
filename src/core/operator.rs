@@ -189,6 +189,8 @@ pub enum Determinism {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum FidelityLoss {
     FieldSelection,
+    /// Removal of one or more coordinate Point Fields.
+    CoordinateFieldSelection,
     PointSelection,
     Representation,
     Metadata,
@@ -434,6 +436,10 @@ impl OperatorStagePlan {
 
     pub fn output_schema(&self) -> &PointSchema {
         &self.output_schema
+    }
+
+    pub(crate) fn output_schema_handle(&self) -> Arc<PointSchema> {
+        Arc::clone(&self.output_schema)
     }
 
     pub const fn input_representation(&self) -> PointRepresentation {

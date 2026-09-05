@@ -15,6 +15,7 @@ pub(crate) struct ContractTestCase<'a> {
     pub accepted_schema: Arc<PointSchema>,
     pub rejected_schema: Arc<PointSchema>,
     pub dimensions: PointDimensions,
+    pub input_representation: PointRepresentation,
     pub authorized_losses: &'a [FidelityLoss],
     pub expected_output_fields: &'a [&'a str],
     pub expected_materialized_fields: &'a [&'a str],
@@ -66,7 +67,7 @@ pub(crate) fn assert_frame_local_contract(case: ContractTestCase<'_>) {
         .validate_operators(
             Arc::clone(&case.rejected_schema),
             case.dimensions,
-            PointRepresentation::View,
+            case.input_representation,
             std::slice::from_ref(&case.contract),
             &LossPolicy::authorize(case.authorized_losses.iter().copied()),
         )
@@ -87,7 +88,7 @@ fn plan(
     Planner::new().validate_operators(
         Arc::clone(&case.accepted_schema),
         case.dimensions,
-        PointRepresentation::View,
+        case.input_representation,
         std::slice::from_ref(&case.contract),
         &loss_policy,
     )
@@ -166,6 +167,7 @@ mod tests {
                 PointField::new("y", PrimitiveType::F32, 1, Some(PointFieldSemantic::Y)).unwrap(),
             ]),
             dimensions: PointDimensions::new(10, 2).unwrap(),
+            input_representation: PointRepresentation::View,
             authorized_losses: &[FidelityLoss::PointSelection],
             expected_output_fields: &["x", "y", "z", "ring"],
             expected_materialized_fields: &["x", "y", "z"],

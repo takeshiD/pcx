@@ -4,7 +4,7 @@
 
 `pcx` is a shell-native toolbox for inspecting and reducing point-cloud recordings on edge Linux systems.
 
-> **Project status:** foundation stage. The executable currently provides `--help` and `--version`; MCAP and point-cloud commands described below are planned for v0.1 and are not implemented yet.
+> **Project status:** early v0.1 development. The executable provides `pcx info`, `--help`, and `--version`; Topic listing and point-frame extraction remain planned.
 
 ## Why pcx?
 
@@ -21,7 +21,8 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 | Capability                                         | Status                |
 | ---                                                | ---                   |
 | `pcx --help`, `pcx --version`                      | Available             |
-| MCAP metadata and topic listing                    | Planned for v0.1      |
+| `pcx info` MCAP metadata                           | Available             |
+| MCAP Topic listing                                 | Planned for v0.1      |
 | ROS 2 `PointCloud2` frame extraction               | Planned for v0.1      |
 | Binary and ASCII PCD output                        | Planned for v0.1      |
 | Crop, field selection, frame-local voxel reduction | Planned               |
@@ -53,12 +54,13 @@ nix run github:takeshiD/pcx -- --version
 nix develop github:takeshiD/pcx
 ```
 
-## Planned v0.1 workflow
+## v0.1 workflow
 
-The following interface documents the accepted v0.1 design; it is not available yet.
+MCAP metadata inspection is available now; the remaining commands document the accepted v0.1 design.
 
 ```bash
 pcx info run.mcap
+# Planned:
 pcx topics run.mcap --json
 pcx extract run.mcap \
   --topic /lidar/points \

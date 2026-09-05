@@ -4,7 +4,7 @@
 
 `pcx`は、edge Linux上にある点群recordingをshellから調査・縮小するためのtoolboxです。
 
-> **開発状況:** 現在は基盤構築段階です。実行ファイルが提供するのは`--help`と`--version`だけで、以下のMCAP・点群commandはv0.1向けの計画であり、まだ実装されていません。
+> **開発状況:** v0.1の初期開発段階です。実行ファイルは`pcx info`、`--help`、`--version`を提供します。Topic一覧とpoint frame抽出は引き続き計画中です。
 
 ## なぜpcxか
 
@@ -21,7 +21,8 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 | 機能 | 状態 |
 | --- | --- |
 | `pcx --help`, `pcx --version` | 利用可能 |
-| MCAP metadata／topic一覧 | v0.1で予定 |
+| `pcx info` MCAP metadata | 利用可能 |
+| MCAP Topic一覧 | v0.1で予定 |
 | ROS 2 `PointCloud2` frame抽出 | v0.1で予定 |
 | binary／ASCII PCD出力 | v0.1で予定 |
 | crop、field選択、frame単位voxel | 計画中 |
@@ -53,12 +54,13 @@ nix run github:takeshiD/pcx -- --version
 nix develop github:takeshiD/pcx
 ```
 
-## v0.1で予定するworkflow
+## v0.1 workflow
 
-次のinterfaceは確定した設計ですが、現在はまだ利用できません。
+MCAP metadata調査は現在利用可能です。残りのcommandは合意済みのv0.1設計です。
 
 ```bash
 pcx info run.mcap
+# 計画中:
 pcx topics run.mcap --json
 pcx extract run.mcap \
   --topic /lidar/points \

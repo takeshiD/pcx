@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: Verify the foundation build and preview the planned workflow.
+description: Inspect MCAP metadata and preview the remaining v0.1 workflow.
 ---
 
 ## Available now
@@ -8,12 +8,12 @@ description: Verify the foundation build and preview the planned workflow.
 ```bash
 pcx --help
 pcx --version
+pcx info run.mcap
 ```
 
 ## Planned for v0.1
 
 ```bash
-pcx info run.mcap
 pcx topics run.mcap --json
 pcx extract run.mcap \
   --topic /lidar/points \

@@ -7,7 +7,7 @@ description: 採用するフォーマット境界と忠実性の規則。
 
 | 境界 | 読み込み | 書き込み | 状態 |
 | --- | --- | --- | --- |
-| MCAP コンテナ | メタデータ、チャンネル、メッセージ | なし | v0.1 予定 |
+| MCAP コンテナ | `pcx info`によるcontainer metadata | なし | 調査機能を利用可能 |
 | ROS 2 `sensor_msgs/msg/PointCloud2` | 厳密な CDR デコード | なし | v0.1 予定 |
 | PCD | なし | binary / ASCII | v0.1 予定 |
 

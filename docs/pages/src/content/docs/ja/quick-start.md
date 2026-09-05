@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: 現在のfoundation buildと計画中workflow。
+description: MCAP metadata調査と、残りのv0.1 workflow。
 ---
 
 ## 現在利用可能
@@ -8,12 +8,12 @@ description: 現在のfoundation buildと計画中workflow。
 ```bash
 pcx --help
 pcx --version
+pcx info run.mcap
 ```
 
 ## v0.1で予定
 
 ```bash
-pcx info run.mcap
 pcx topics run.mcap --json
 pcx extract run.mcap \
   --topic /lidar/points \

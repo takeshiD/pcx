@@ -14,6 +14,7 @@ include = [
     "/LICENSE",
     "/README.md",
     "/README.ja.md",
+    "/docs/json-schema/**",
     "/examples/**",
     "/generated/**",
     "/scripts/**",

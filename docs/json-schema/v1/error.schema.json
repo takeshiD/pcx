@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takeshid.github.io/pcx/json-schema/v1/error.schema.json",
+  "title": "pcx structured error report, schema version 1",
+  "type": "object",
+  "required": ["schema_version", "command", "error"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "command": { "enum": ["info", "topics"] },
+    "error": {
+      "type": "object",
+      "required": ["category", "message"],
+      "properties": {
+        "category": {
+          "enum": [
+            "usage",
+            "invalid_data",
+            "unsupported",
+            "not_found",
+            "resource",
+            "io",
+            "interrupted",
+            "internal"
+          ]
+        },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,9 +1,37 @@
 use serde::Serialize;
 
-use super::{ExecutionPlan, JobKind};
+use super::{ErrorCategory, ExecutionPlan, JobKind};
 
 /// Current schema for machine-readable execution reports.
 pub const MACHINE_REPORT_SCHEMA_VERSION: u32 = 1;
+
+/// Versioned machine-readable envelope returned when a JSON command fails.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ErrorReport {
+    schema_version: u32,
+    command: JobKind,
+    error: ErrorData,
+}
+
+/// Stable failure fields for machine-readable command diagnostics.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ErrorData {
+    category: ErrorCategory,
+    message: String,
+}
+
+impl ErrorReport {
+    pub fn new(command: JobKind, category: ErrorCategory, message: impl Into<String>) -> Self {
+        Self {
+            schema_version: MACHINE_REPORT_SCHEMA_VERSION,
+            command,
+            error: ErrorData {
+                category,
+                message: message.into(),
+            },
+        }
+    }
+}
 
 /// Versioned machine-readable envelope returned after successful execution.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -45,9 +73,9 @@ mod tests {
     use serde::Serialize;
     use serde_json::json;
 
-    use super::{ExecutionReport, MACHINE_REPORT_SCHEMA_VERSION};
+    use super::{ErrorReport, ExecutionReport, MACHINE_REPORT_SCHEMA_VERSION};
     use crate::core::{
-        ByteBound, JobKind, JobSpec, PipelineMemoryRequirements, Planner, SourceSpec,
+        ByteBound, ErrorCategory, JobKind, JobSpec, PipelineMemoryRequirements, Planner, SourceSpec,
     };
 
     #[derive(Debug, Eq, PartialEq, Serialize)]
@@ -80,6 +108,23 @@ mod tests {
                 "schema_version": 1,
                 "command": "info",
                 "data": { "bytes_written": 42 }
+            })
+        );
+    }
+
+    #[test]
+    fn error_report_has_the_same_versioned_command_context() {
+        let report = ErrorReport::new(JobKind::Topics, ErrorCategory::InvalidData, "bad source");
+
+        assert_eq!(
+            serde_json::to_value(&report).expect("report should serialize"),
+            json!({
+                "schema_version": 1,
+                "command": "topics",
+                "error": {
+                    "category": "invalid_data",
+                    "message": "bad source"
+                }
             })
         );
     }

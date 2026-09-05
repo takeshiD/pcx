@@ -39,4 +39,4 @@ attachment／metadata indexは省略します。意味が未定義のunknown fut
 recordは明示的に拒否します。compressionはsingle-threaded deterministic zstdが
 defaultで、`none`とdeterministic LZ4も選択できます。
 
-診断は stderr、データと JSON は stdout に出力します。JSON は `schema_version` を持ちます。既存ファイルは `--force` なしでは上書きせず、割り込み時は一時ファイルを除去して `130` を返します。
+human-readableな診断はstderr、成功した`--json`のデータはstdoutに出力します。parse済みのJSON commandが失敗した場合、stdoutは空のまま、version付きJSON errorをstderrへ出力します。schemaとcompatibility policyは[`docs/json-schema`](https://github.com/takeshiD/pcx/tree/main/docs/json-schema)で公開します。human-readable outputとdiagnostic messageの文言はcompatibility contractではありません。既存ファイルは`--force`なしでは上書きせず、割り込み時は一時ファイルを除去して`130`を返します。

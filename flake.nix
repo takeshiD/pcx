@@ -98,6 +98,7 @@
               pkgs.cargo-fuzz
               pkgs.nodejs_24
               pkgs.nixfmt
+              pkgs.python3
             ];
           };
 

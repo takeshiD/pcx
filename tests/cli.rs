@@ -384,6 +384,14 @@ fn topics_rejects_malformed_input_only_on_stderr() {
 
     assert_eq!(output.status.code(), Some(3));
     assert!(output.stdout.is_empty());
-    let stderr = String::from_utf8(output.stderr).expect("diagnostic should be UTF-8");
-    assert!(stderr.starts_with("pcx: error: invalid MCAP"));
+    let error: serde_json::Value =
+        serde_json::from_slice(&output.stderr).expect("diagnostic should be JSON");
+    assert_eq!(error["schema_version"], 1);
+    assert_eq!(error["command"], "topics");
+    assert_eq!(error["error"]["category"], "invalid_data");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.starts_with("invalid MCAP"))
+    );
 }

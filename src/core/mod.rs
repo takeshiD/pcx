@@ -24,5 +24,5 @@ pub use plan::{
     ByteBound, ExecutionMode, ExecutionPlan, ManagedMemoryBound, ManagedMemoryBreakdown,
     PipelineMemoryRequirements, Planner,
 };
-pub use report::{ExecutionReport, MACHINE_REPORT_SCHEMA_VERSION};
+pub use report::{ErrorReport, ExecutionReport, MACHINE_REPORT_SCHEMA_VERSION};
 pub use sink::{Cancellation, OutputOutcome, write_output, write_stream};

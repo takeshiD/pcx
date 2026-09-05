@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takeshid.github.io/pcx/json-schema/v1/topics.schema.json",
+  "title": "pcx topics success report, schema version 1",
+  "type": "object",
+  "required": ["schema_version", "command", "data"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "command": { "const": "topics" },
+    "data": {
+      "type": "object",
+      "required": ["channels"],
+      "properties": {
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "channel_id",
+              "topic",
+              "message_encoding",
+              "message_count",
+              "schema",
+              "ros2_pointcloud2_candidate"
+            ],
+            "properties": {
+              "channel_id": { "type": "integer", "minimum": 0 },
+              "topic": { "type": "string" },
+              "message_encoding": { "type": "string" },
+              "message_count": { "type": "integer", "minimum": 0 },
+              "schema": {
+                "type": ["object", "null"],
+                "required": ["id", "name", "encoding"],
+                "properties": {
+                  "id": { "type": "integer", "minimum": 0 },
+                  "name": { "type": "string" },
+                  "encoding": { "type": "string" }
+                },
+                "additionalProperties": true
+              },
+              "ros2_pointcloud2_candidate": { "type": "boolean" }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -13,9 +13,9 @@ use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 
 use crate::{
     core::{
-        ByteBound, Cancellation, Destination, Error, ErrorCategory, ExecutionPlan, ExecutionReport,
-        FrameSelector, JobSpec, PipelineMemoryRequirements, Planner, Result as CoreResult,
-        SourceSpec, write_output,
+        ByteBound, Cancellation, Destination, Error, ErrorCategory, ErrorReport, ExecutionPlan,
+        ExecutionReport, FrameSelector, JobKind, JobSpec, PipelineMemoryRequirements, Planner,
+        Result as CoreResult, SourceSpec, write_output,
     },
     mcap::{
         self, DiscoveredChannel, PassthroughCompression, PassthroughError, ProbeError,
@@ -148,6 +148,16 @@ enum Command {
     Extract(ExtractArgs),
     /// Copy one selected encoded message into a faithful reduced MCAP.
     Passthrough(PassthroughArgs),
+}
+
+impl Cli {
+    fn machine_command(&self) -> Option<JobKind> {
+        match &self.command {
+            Some(Command::Info(args)) if args.json => Some(JobKind::Info),
+            Some(Command::Topics(args)) if args.json => Some(JobKind::Topics),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Args)]
@@ -663,13 +673,25 @@ pub fn main() -> ExitCode {
         }
     };
 
+    let machine_command = cli.machine_command();
     let stdout = io::stdout();
     let mut output = stdout.lock();
     match run(cli, &mut output) {
         Ok(()) => ExitStatus::Success.into(),
         Err(error) if error.broken_pipe => ExitStatus::Success.into(),
         Err(error) => {
-            eprintln!("pcx: error: {}", error.message);
+            if let Some(command) = machine_command {
+                let report = ErrorReport::new(command, error.category, &error.message);
+                let stderr = io::stderr();
+                let mut diagnostic = stderr.lock();
+                if serde_json::to_writer_pretty(&mut diagnostic, &report).is_ok() {
+                    let _ = writeln!(diagnostic);
+                } else {
+                    eprintln!("pcx: error: {}", error.message);
+                }
+            } else {
+                eprintln!("pcx: error: {}", error.message);
+            }
             ExitStatus::from(error.category).into()
         }
     }

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "command": "info",
+  "data": {
+    "profile": "ros2",
+    "library": "mcap go v1.8.0; pcx-fixture-seed/1.0.0",
+    "size_bytes": 1758,
+    "message_count": 1,
+    "schema_count": 1,
+    "channel_count": 1,
+    "metadata_count": 0,
+    "start_log_time_ns": 1700000000123456789,
+    "end_log_time_ns": 1700000000123456789,
+    "duration_ns": 0
+  }
+}

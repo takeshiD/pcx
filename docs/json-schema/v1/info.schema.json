@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takeshid.github.io/pcx/json-schema/v1/info.schema.json",
+  "title": "pcx info success report, schema version 1",
+  "type": "object",
+  "required": ["schema_version", "command", "data"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "command": { "const": "info" },
+    "data": {
+      "type": "object",
+      "required": [
+        "profile",
+        "library",
+        "size_bytes",
+        "message_count",
+        "schema_count",
+        "channel_count",
+        "metadata_count",
+        "start_log_time_ns",
+        "end_log_time_ns",
+        "duration_ns"
+      ],
+      "properties": {
+        "profile": { "type": "string" },
+        "library": { "type": "string" },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "message_count": { "type": "integer", "minimum": 0 },
+        "schema_count": { "type": "integer", "minimum": 0 },
+        "channel_count": { "type": "integer", "minimum": 0 },
+        "metadata_count": { "type": "integer", "minimum": 0 },
+        "start_log_time_ns": { "type": ["integer", "null"], "minimum": 0 },
+        "end_log_time_ns": { "type": ["integer", "null"], "minimum": 0 },
+        "duration_ns": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

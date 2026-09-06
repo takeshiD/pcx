@@ -45,7 +45,8 @@ alternatives.
 
 - Human diagnostics and progress use stderr.
 - Data and `--json` results use stdout.
-- JSON objects carry a `schema_version`.
+- Successful `--json` output uses stdout. Failures from a successfully parsed JSON command leave stdout empty and write a versioned JSON error object to stderr.
+- The JSON schemas and compatibility policy are published in [`docs/json-schema`](https://github.com/takeshiD/pcx/tree/main/docs/json-schema). Human-readable output and diagnostic message wording are not compatibility contracts.
 - Success is `0`; usage errors, invalid data and resource refusal are non-zero.
 - Interrupt handling removes temporary output and returns `130`.
 - Existing output is rejected unless `--force` is explicit.

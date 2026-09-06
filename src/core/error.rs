@@ -1,7 +1,8 @@
 use std::fmt;
 
 /// Stable, format-independent classes of failure exposed at the CLI seam.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ErrorCategory {
     /// The requested job or command arguments are invalid.
     Usage,

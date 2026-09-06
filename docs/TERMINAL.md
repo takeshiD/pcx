@@ -1,17 +1,19 @@
 # Terminal Capability and Rendering Contract
 
-Status: capability selection, Unicode rendering, and Kitty graphics encoding
-implemented. CLI integration and Sixel remain separate work.
+Status: capability selection and the Unicode, Kitty, and Sixel encoders are
+implemented. CLI integration remains separate work.
+
+## Capability selection
 
 `pcx` treats terminal detection as a read-only policy decision. Detection does
 not render, does not write stdout or stderr, and accepts environment, TTY, and
 capability-query state through injectable seams.
 
-## Selection order
+The selection order is:
 
 1. An explicit backend wins and skips detection. `plain` is always valid.
-   `unicode` and `kitty` require TTY stdout; redirected control output is
-   rejected instead of silently falling back.
+   `unicode`, `kitty`, and `sixel` require TTY stdout; redirected control output
+   is rejected instead of silently falling back.
 2. Automatic selection uses `plain` immediately when stdout is not a TTY. It
    never queries a redirected stream.
 3. A TTY with non-TTY stdin uses `unicode` without a query because a response
@@ -20,8 +22,9 @@ capability-query state through injectable seams.
 5. SSH and tmux sessions use `unicode` without a query. This conservative path
    avoids passthrough differences, delayed responses, and remote hangs.
 6. Other interactive sessions may run an injected capability query for at
-   most 100 ms. A positive response selects `kitty`; unsupported, malformed,
-   failed, disconnected, or timed-out queries fall back to `unicode`.
+   most 100 ms. A positive typed response selects `kitty` or `sixel`;
+   unsupported, malformed, failed, disconnected, or timed-out queries fall
+   back to `unicode`.
 
 Environment values are only compared as opaque data and are never embedded in
 control sequences. A query returns a typed result; its implementation must cap
@@ -31,8 +34,59 @@ the fixed 100 ms deadline, so an uncooperative query cannot block selection.
 The deterministic automatic fallback order is therefore:
 
 ```text
-confirmed Kitty -> Unicode -> plain non-terminal output
+confirmed Kitty or Sixel -> Unicode -> plain non-terminal output
 ```
+
+The Sixel encoder consumes the canonical `Selection` and refuses every
+non-Sixel backend before DCS entry. The selected backend's own renderer owns
+rendering and any portable fallback; Sixel encoding does not duplicate
+capability policy or infer support from environment claims.
+
+## Sixel encoding
+
+The encoder consumes the immutable row-major [`Raster`](./PROJECTION.md)
+produced by common CPU projection. It does not inspect Point Fields, alter
+Point Frame metadata, choose a camera, or perform capability detection.
+
+It uses transparent-background Sixel (`P2=1`), declares a 1:1 raster, and
+preserves the raster's exact pixel width and height. Empty cells remain
+transparent. Occupied RGB8 colors are assigned palette indexes in first
+row-major occurrence order. RGB channels are mapped to Sixel's inclusive
+0–100 range by deterministic nearest-integer rounding.
+
+Rows are encoded in top-to-bottom six-row bands. Within each band, palette
+planes follow palette order, trailing unset columns are omitted, and runs of
+four or more identical sixel characters use repeat introducers. The emitted
+bytes are therefore deterministic for an identical raster and limits. No
+source names, metadata, environment strings, or caller text enters the DCS;
+only fixed protocol bytes and bounded unsigned decimal integers are emitted.
+
+## Bounds and planning
+
+`SixelLimits` rejects zero dimension limits and palette limits outside 1–256.
+Before output begins, `SixelPlan`:
+
+1. checks raster width and height against their explicit limits;
+2. collects no more than the configured palette limit in a fixed 256-entry
+   table and refuses additional distinct colors without quantization;
+3. runs the encoder through an overflow-checked counting sink; and
+4. refuses an exact encoded payload larger than the configured byte limit.
+
+The default limits are 4096×4096 pixels, 256 colors, and 64 MiB of emitted
+bytes. Callers may choose tighter limits. The payload is streamed directly and
+never retained as an encoder buffer. `SixelPlan::encoder_memory_bound` exposes
+the fixed plan/palette state before rasterization for the common managed-memory
+planner; output and queue bounds remain the caller's sink responsibility.
+
+## Failure and interruption
+
+Cancellation before DCS entry writes nothing. After DCS entry is attempted,
+the encoder makes a best-effort write of the Sixel string terminator and flushes
+it on success, cancellation, or body I/O failure. This cleanup bypasses the
+encoder's cancellation check so an interrupt cannot suppress its restoration
+attempt. If both the body and cleanup fail, the cleanup failure is reported
+because terminal state is then uncertain. Process integration maps the typed
+interruption category to exit status 130.
 
 This module does not change the existing command stream contract: data remains
 on stdout, diagnostics remain on stderr, and binary PCD stdout is untouched.
@@ -182,9 +236,9 @@ payload.
 
 Kitty escape bytes are gated by the selection policy above. `auto` requires a
 positive typed query, while explicit `kitty` still requires TTY stdout.
-Selections of `unicode` or `plain` return a portable-fallback outcome and write
-no bytes. Environment claims such as `TERM=xterm-kitty` never authorize Kitty
-output by themselves.
+Selections of `sixel`, `unicode`, or `plain` return a portable-fallback outcome
+and write no bytes. Environment claims such as `TERM=xterm-kitty` never
+authorize Kitty output by themselves.
 
 Each image has a caller-owned non-zero ID. Transmission uses `C=1`, so the
 terminal cursor does not move. Cancellation before the first chunk writes

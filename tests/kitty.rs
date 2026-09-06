@@ -240,6 +240,7 @@ fn portable_fallback_selections_emit_no_escape_or_other_bytes() {
     let raster = raster(3);
     let encoder = encoder(KittyLimits::default());
     for (backend, stdout_tty) in [
+        (BackendChoice::Sixel, true),
         (BackendChoice::Unicode, true),
         (BackendChoice::Plain, false),
     ] {

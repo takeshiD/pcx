@@ -13,9 +13,20 @@ description: Accepted format boundaries and fidelity rules.
 | PLY 1.0 | Scalar vertices in ASCII and both binary byte orders | ASCII and both binary byte orders | Adapter available; no CLI command yet |
 | LAS/LAZ | Bounded synchronous batches | Bounded synchronous batches | Library adapter available; CLI not yet exposed |
 
-LAS/LAZ CLI integration, Kitty, and Sixel are later work. The CPU rasterizer,
-capability selection, and Unicode terminal backend are available internally.
-AWS/S3 transports and cloud credentials are not product features.
+LAS/LAZ CLI integration and terminal-rendering CLI integration are later work.
+The CPU rasterizer, conservative capability selection, and Unicode, Kitty, and
+Sixel terminal backends are available internally. AWS/S3 transports and cloud
+credentials are not product features.
+
+## Sixel terminal protocol
+
+The Sixel adapter streams a deterministic transparent-background image from
+the common raster. It refuses dimensions, distinct colors, or exact encoded
+payloads beyond caller-supplied limits before output starts. Sixel escapes are
+eligible only when the shared capability policy selected Sixel; other selected
+backends are refused before DCS entry and use their own renderer. Capability
+probing is not inferred by the encoder. See the repository's terminal rendering
+contract for the byte, memory, fallback, and interruption rules.
 
 ## Faithful PLY subset
 

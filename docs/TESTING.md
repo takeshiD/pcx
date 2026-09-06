@@ -91,6 +91,7 @@ Every checked-in fixture records its source, generator command/version, license,
 | CPU projection | reviewed synthetic raster cells plus independent policy assertions |
 | Unicode terminal output | reviewed LF-only snapshot with ESC made visible as literal `\x1b` |
 | LAS/LAZ points | PDAL-produced files checked against reviewed coordinate, classification, standard-field and Extra Bytes values |
+| Sixel encoding | reviewed golden bytes plus independent bounds, gating, injection, and cleanup assertions |
 | CLI text/JSON | reviewed snapshots with volatile values normalized |
 | Errors | typed code and structured context, never backtraces |
 

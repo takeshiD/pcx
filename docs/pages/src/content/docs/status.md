@@ -34,8 +34,9 @@ schema; a user-facing command is not yet exposed.
 The bounded LAS/LAZ reader/writer adapter is also implemented behind the
 common schema; its user-facing commands remain future work.
 
-- **Terminal rendering:** deterministic CPU rasterizer, capability selection,
-  and Unicode backend are available internally; Kitty and Sixel follow.
+- **Terminal rendering:** deterministic CPU rasterizer, conservative capability
+  selection, and bounded Unicode, Kitty, and Sixel backends are available
+  internally; CLI integration remains future work.
 - **Hardening:** longer fuzz runs, performance baselines, musl investigation and resource tuning.
 
 ## Explicit non-goals

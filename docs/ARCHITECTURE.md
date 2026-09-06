@@ -24,7 +24,8 @@ src/
 ├── ply/           faithful scalar-vertex PLY adapter
 ├── las/           bounded LAS/LAZ reader/writer adapter
 ├── ops/           semantic point operators
-└── terminal/      bounded encoders for the common CPU raster
+├── terminal.rs    terminal capability policy and adapter root
+└── terminal/      bounded terminal raster encoders
 ```
 
 Allowed dependencies:
@@ -157,7 +158,10 @@ Semantic operators on temporal input apply independently to each Point Frame unl
 Terminal-neutral CPU projection is also frame-local. Its axis-aligned camera,
 fitted-bounds, z-buffer, color, numeric-determinism, and memory contracts are
 specified in [`PROJECTION.md`](./PROJECTION.md). Terminal protocols and
-capability detection remain separate downstream concerns.
+capability selection remain separate downstream concerns. The Sixel adapter
+consumes only this common raster and requires the canonical terminal policy to
+select Sixel; its bounded encoding contract is specified in
+[`TERMINAL.md`](./TERMINAL.md).
 
 The portable Unicode terminal encoder consumes that raster synchronously and
 streams bounded half-block text without retaining a frame-sized output buffer.

@@ -30,8 +30,8 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 | Bounded synchronous LAS/LAZ library I/O            | Available             |
 | Crop, field selection, frame-local voxel reduction | Planned               |
 | PLY scalar-vertex adapter (CLI integration later)  | Available internally  |
-| CPU projection, terminal selection, and Unicode    | Available internally  |
-| LAS/LAZ CLI commands, Kitty, and Sixel              | Planned               |
+| CPU projection and terminal backends (CLI later)    | Available internally  |
+| LAS/LAZ CLI commands                                | Planned               |
 | AWS/S3 upload and cloud credentials                | Out of scope          |
 | macOS and Windows support                          | Undecided future work |
 

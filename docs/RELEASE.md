@@ -46,6 +46,13 @@ After the first publication, configure the crate's GitHub Trusted Publisher with
 
 Each archive contains the `pcx` executable, `LICENSE`, `README.md`, shell completions under `share/{bash-completion,zsh,fish}`, and `pcx` manual pages under `share/man/man1`. Alpha tags create a GitHub pre-release and publish the matching Cargo pre-release version.
 
+The supported archives are GNU-linked.
+[ADR-0015](./adr/0015-keep-gnu-linux-release-artifacts.md) keeps them in place
+until the exact static musl release candidates pass full-feature tests on native
+x86_64 and native aarch64 Linux, representative target smoke tests, and an
+explicitly accepted size and runtime comparison. A cross-build or emulated run
+alone is not native support evidence.
+
 ## Recovery
 
 If Cachix succeeds but the OIDC exchange or crates.io publication fails, fix only the Trusted Publisher or release configuration and rerun the same tag workflow after verifying the registry does not contain the version. Never move a published tag to different source. A crates.io version cannot be overwritten; a broken published version is yanked and replaced with a new patch/pre-release version.

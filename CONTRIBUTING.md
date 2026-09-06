@@ -23,11 +23,17 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo check --all-targets --all-features
 cargo test --all-features
+./scripts/generate-assets.sh --check
 nix flake check
 npm --prefix docs/pages ci
 npm --prefix docs/pages run check
 npm --prefix docs/pages run build
 ```
+
+Shell completions and manual pages under `generated/` come from the clap
+grammar and package version. Run `./scripts/generate-assets.sh` after changing
+either, and review the generated diff before committing it. CI only checks for
+stale files; it never updates them.
 
 ## Design rules
 

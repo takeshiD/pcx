@@ -45,6 +45,15 @@
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
             doCheck = true;
+            nativeBuildInputs = [ pkgs.installShellFiles ];
+
+            postInstall = ''
+              installShellCompletion \
+                --bash generated/completions/pcx.bash \
+                --zsh generated/completions/_pcx \
+                --fish generated/completions/pcx.fish
+              installManPage generated/man/*.1
+            '';
 
             meta = {
               description = "Shell-native point-cloud toolbox for edge Linux systems";

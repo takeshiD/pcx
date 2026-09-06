@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH pcx-info 1  "pcx 0.1.1"
+.SH NAME
+pcx\-info \- Show MCAP container metadata without decoding point frames
+.SH SYNOPSIS
+\fBpcx info\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT.mcap\fR>
+.SH DESCRIPTION
+Show MCAP container metadata without decoding point frames
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print versioned JSON instead of human\-readable text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIINPUT.mcap\fR>
+MCAP Source to inspect

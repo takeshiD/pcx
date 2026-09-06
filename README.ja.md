@@ -59,6 +59,10 @@ nix run github:takeshiD/pcx -- --version
 nix develop github:takeshiD/pcx
 ```
 
+Nix packageとLinux release archiveにはBash、Zsh、Fishのcompletionとmanual pageが
+含まれます。配置先と再生成手順は
+[install guide](https://takeshid.github.io/pcx/ja/installation/)を参照してください。
+
 ## v0.1 workflow
 
 MCAP metadata調査、Topic discovery、1 frameのextractは現在利用可能です。

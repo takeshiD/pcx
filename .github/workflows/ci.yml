@@ -76,6 +76,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: rustup show active-toolchain
+      - name: Check generated shell and man assets
+        run: ./scripts/generate-assets.sh --check
       - run: cargo package --locked
       - name: Build and install the extracted package
         shell: bash

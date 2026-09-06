@@ -1,0 +1,41 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH pcx-passthrough 1  "pcx 0.1.1"
+.SH NAME
+pcx\-passthrough \- Copy one selected encoded message into a faithful reduced MCAP
+.SH SYNOPSIS
+\fBpcx passthrough\fR <\fB\-\-topic\fR> [\fB\-\-frame\fR] [\fB\-\-at\fR] <\fB\-o\fR|\fB\-\-output\fR> [\fB\-\-force\fR] [\fB\-\-compression\fR] [\fB\-\-memory\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT.mcap\fR>
+.SH DESCRIPTION
+Copy one selected encoded message into a faithful reduced MCAP
+.SH OPTIONS
+.TP
+\fB\-\-topic\fR \fI<TOPIC>\fR
+Topic whose encoded messages are selected
+.TP
+\fB\-\-frame\fR \fI<INDEX>\fR
+Zero\-based message index after Topic selection
+.TP
+\fB\-\-at\fR \fI<DURATION>\fR
+First message at or after this duration from recording start
+.TP
+\fB\-o\fR, \fB\-\-output\fR \fI<PATH|\->\fR
+Output MCAP path, or \*(Aq\-\*(Aq for binary\-safe stdout
+.TP
+\fB\-\-force\fR
+Replace an existing output file
+.TP
+\fB\-\-compression\fR \fI<COMPRESSION>\fR [default: zstd]
+Deterministic output chunk compression
+.br
+
+.br
+[\fIpossible values: \fRnone, zstd, lz4]
+.TP
+\fB\-\-memory\-limit\fR \fI<BYTES>\fR [default: 536870912]
+Hard managed\-memory limit in bytes
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIINPUT.mcap\fR>
+MCAP Source containing the encoded message

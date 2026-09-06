@@ -44,7 +44,7 @@ After the first publication, configure the crate's GitHub Trusted Publisher with
 - `pcx-vX.Y.Z-aarch64-linux.tar.xz`
 - `SHA256SUMS`
 
-Each archive contains the `pcx` executable, `LICENSE`, and a minimal README. Alpha tags create a GitHub pre-release and publish the matching Cargo pre-release version.
+Each archive contains the `pcx` executable, `LICENSE`, `README.md`, shell completions under `share/{bash-completion,zsh,fish}`, and `pcx` manual pages under `share/man/man1`. Alpha tags create a GitHub pre-release and publish the matching Cargo pre-release version.
 
 ## Recovery
 

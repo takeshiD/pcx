@@ -90,6 +90,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check generated shell and man assets
+        run: ./scripts/generate-assets.sh --check
       - run: cargo package --locked
       - name: Build and install the extracted package
         shell: bash
@@ -114,20 +116,22 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: cargo build --release --locked
-      - name: Build release archive
+      - name: Archive binary, shell completions, and manual pages
         shell: bash
         run: |
-          archive="pcx-${GITHUB_REF_NAME}-${{ matrix.arch }}.tar.xz"
-          archive_root="${RUNNER_TEMP}/pcx-archive-${{ matrix.arch }}"
-          install -Dm755 target/release/pcx "${archive_root}/pcx"
-          install -Dm644 LICENSE "${archive_root}/LICENSE"
-          install -Dm644 .github/release/README.md "${archive_root}/README.md"
-          tar -C "${archive_root}" -cJf "${archive}" LICENSE README.md pcx
+          ./scripts/package-release-archive.sh \
+            target/release/pcx \
+            "${{ needs.validate.outputs.version }}" \
+            "${{ matrix.arch }}"
       - name: Verify release archive contents
         shell: bash
         run: |
           archive="pcx-${GITHUB_REF_NAME}-${{ matrix.arch }}.tar.xz"
-          expected=$'LICENSE\nREADME.md\npcx'
+          expected=$'LICENSE\nREADME.md\npcx\nshare/bash-completion/completions/pcx\nshare/fish/vendor_completions.d/pcx.fish'
+          while IFS= read -r manual; do
+            expected+=$'\n'"share/man/man1/${manual##*/}"
+          done < <(find generated/man -maxdepth 1 -type f -name '*.1' | sort)
+          expected+=$'\nshare/zsh/site-functions/_pcx'
           actual=$(tar -tJf "${archive}")
           if [[ "${actual}" != "${expected}" ]]; then
             printf 'Unexpected archive contents:\n%s\n' "${actual}" >&2

@@ -1,6 +1,6 @@
 [package]
 name = "pcx-cli"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "A shell-native toolbox for inspecting and reducing point-cloud recordings on edge Linux systems"
 readme = "README.md"

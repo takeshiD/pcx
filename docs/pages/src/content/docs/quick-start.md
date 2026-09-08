@@ -32,6 +32,18 @@ pcx passthrough run.mcap --topic /lidar/points --frame 0 -o selected.mcap
 This container path preserves encoded message and recording-level records
 without PointCloud2 decoding.
 
+## Render one Point Frame in the terminal
+
+```bash
+pcx render run.mcap --topic /lidar/points --frame 0
+```
+
+The default `--backend auto` falls back conservatively; the current process
+query does not auto-authorize Kitty or Sixel.
+Use `--backend unicode` for an explicit interactive text-cell rendering. When
+stdout is redirected, automatic output is deterministic monochrome Unicode
+without ANSI or graphics-protocol escape sequences.
+
 Transfer output with the shell rather than a cloud client:
 
 ```bash

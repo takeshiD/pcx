@@ -10,6 +10,7 @@ pub enum JobKind {
     Topics,
     Extract,
     Passthrough,
+    Render,
 }
 
 /// A validated local Source description.
@@ -106,6 +107,10 @@ enum Operation {
         selector: FrameSelector,
         destination: Destination,
     },
+    Render {
+        topic: String,
+        selector: FrameSelector,
+    },
 }
 
 /// A validated, format-independent description of requested behavior.
@@ -171,12 +176,29 @@ impl JobSpec {
         })
     }
 
+    /// Describe rendering one selected Point Frame to standard output.
+    pub fn render(
+        source: SourceSpec,
+        topic: impl Into<String>,
+        selector: FrameSelector,
+    ) -> Result<Self> {
+        let topic = topic.into();
+        if topic.trim().is_empty() {
+            return Err(Error::new(ErrorCategory::Usage, "Topic must not be empty"));
+        }
+        Ok(Self {
+            source,
+            operation: Operation::Render { topic, selector },
+        })
+    }
+
     pub const fn kind(&self) -> JobKind {
         match self.operation {
             Operation::Info => JobKind::Info,
             Operation::Topics => JobKind::Topics,
             Operation::Extract { .. } => JobKind::Extract,
             Operation::Passthrough { .. } => JobKind::Passthrough,
+            Operation::Render { .. } => JobKind::Render,
         }
     }
 
@@ -191,7 +213,10 @@ impl JobSpec {
                 selector,
                 destination,
             } => Some((topic, *selector, destination)),
-            Operation::Info | Operation::Topics | Operation::Passthrough { .. } => None,
+            Operation::Info
+            | Operation::Topics
+            | Operation::Passthrough { .. }
+            | Operation::Render { .. } => None,
         }
     }
 
@@ -202,7 +227,20 @@ impl JobSpec {
                 selector,
                 destination,
             } => Some((topic, *selector, destination)),
-            Operation::Info | Operation::Topics | Operation::Extract { .. } => None,
+            Operation::Info
+            | Operation::Topics
+            | Operation::Extract { .. }
+            | Operation::Render { .. } => None,
+        }
+    }
+
+    pub fn render_selection(&self) -> Option<(&str, FrameSelector)> {
+        match &self.operation {
+            Operation::Render { topic, selector } => Some((topic, *selector)),
+            Operation::Info
+            | Operation::Topics
+            | Operation::Extract { .. }
+            | Operation::Passthrough { .. } => None,
         }
     }
 }
@@ -227,17 +265,20 @@ mod tests {
         )
         .expect("valid extraction");
         let passthrough = JobSpec::passthrough(
-            source,
+            source.clone(),
             "/lidar/points",
             FrameSelector::Index(0),
             Destination::stdout(),
         )
         .expect("valid passthrough");
+        let render = JobSpec::render(source, "/lidar/points", FrameSelector::Index(0))
+            .expect("valid render");
 
         assert_eq!(info.kind(), JobKind::Info);
         assert_eq!(topics.kind(), JobKind::Topics);
         assert_eq!(extract.kind(), JobKind::Extract);
         assert_eq!(passthrough.kind(), JobKind::Passthrough);
+        assert_eq!(render.kind(), JobKind::Render);
         assert_eq!(extract.source().path(), Path::new("recording.bin"));
         assert_eq!(
             extract.extraction(),
@@ -256,6 +297,10 @@ mod tests {
             ))
         );
         assert!(passthrough.extraction().is_none());
+        assert_eq!(
+            render.render_selection(),
+            Some(("/lidar/points", FrameSelector::Index(0)))
+        );
     }
 
     #[test]

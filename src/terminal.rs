@@ -20,10 +20,17 @@ pub use unicode::{
 
 use std::{
     ffi::{OsStr, OsString},
-    io::{self, IsTerminal},
+    io::{self, IsTerminal, Write},
+    num::NonZeroU32,
     sync::{Arc, mpsc},
     thread,
     time::Duration,
+};
+
+use crate::{
+    core::{ByteBound, Cancellation, ErrorCategory},
+    ops::Raster,
+    terminal::kitty::{KittyEncoder, KittyError, KittyLimits, KittyPlan, KittyWriteOutcome},
 };
 
 pub mod kitty;
@@ -54,6 +61,206 @@ pub enum Backend {
     Sixel,
     Unicode,
     Plain,
+}
+
+/// Encoder settings shared by terminal-rendering callers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TerminalRenderOptions {
+    unicode_color: UnicodeColorPolicy,
+    kitty_image_id: NonZeroU32,
+    kitty_limits: KittyLimits,
+    sixel_limits: SixelLimits,
+}
+
+impl TerminalRenderOptions {
+    pub const fn new(
+        unicode_color: UnicodeColorPolicy,
+        kitty_image_id: NonZeroU32,
+        kitty_limits: KittyLimits,
+        sixel_limits: SixelLimits,
+    ) -> Self {
+        Self {
+            unicode_color,
+            kitty_image_id,
+            kitty_limits,
+            sixel_limits,
+        }
+    }
+
+    /// Encoder-owned memory required by the selected backend before projection.
+    pub fn encoder_memory_bound(self, selection: Selection) -> ByteBound {
+        match selection.backend() {
+            Backend::Kitty => {
+                KittyEncoder::new(self.kitty_image_id, self.kitty_limits).memory_bound()
+            }
+            Backend::Sixel => SixelPlan::encoder_memory_bound(),
+            Backend::Unicode | Backend::Plain => ByteBound::bounded(0),
+        }
+    }
+
+    /// Validate the selected backend and all raster-dependent output bounds.
+    pub fn plan<'a>(
+        self,
+        selection: Selection,
+        output_kind: UnicodeOutputKind,
+        raster: &'a Raster,
+    ) -> Result<TerminalRenderPlan<'a>, TerminalRenderError> {
+        if output_kind == UnicodeOutputKind::NonTty
+            && matches!(selection.backend(), Backend::Kitty | Backend::Sixel)
+        {
+            return Err(TerminalRenderError::NonTtyGraphics(selection.backend()));
+        }
+
+        let planned = match selection.backend() {
+            Backend::Kitty => {
+                let encoder = KittyEncoder::new(self.kitty_image_id, self.kitty_limits);
+                let plan = encoder.plan(raster).map_err(TerminalRenderError::Kitty)?;
+                PlannedBackend::Kitty { encoder, plan }
+            }
+            Backend::Sixel => PlannedBackend::Sixel(Box::new(
+                SixelPlan::new(raster, self.sixel_limits).map_err(TerminalRenderError::Sixel)?,
+            )),
+            Backend::Unicode | Backend::Plain => PlannedBackend::Unicode(UnicodeRenderPlan::new(
+                raster.dimensions(),
+                self.unicode_color,
+            )),
+        };
+        Ok(TerminalRenderPlan {
+            selection,
+            output_kind: if selection.backend() == Backend::Plain {
+                UnicodeOutputKind::NonTty
+            } else {
+                output_kind
+            },
+            raster,
+            planned,
+        })
+    }
+}
+
+impl Default for TerminalRenderOptions {
+    fn default() -> Self {
+        Self::new(
+            UnicodeColorPolicy::TrueColor,
+            NonZeroU32::MIN,
+            KittyLimits::default(),
+            DEFAULT_SIXEL_LIMITS,
+        )
+    }
+}
+
+#[derive(Debug)]
+enum PlannedBackend<'a> {
+    Unicode(UnicodeRenderPlan),
+    Kitty {
+        encoder: KittyEncoder,
+        plan: KittyPlan,
+    },
+    Sixel(Box<SixelPlan<'a>>),
+}
+
+/// A raster whose selected encoder has completed bounded preflight.
+#[derive(Debug)]
+pub struct TerminalRenderPlan<'a> {
+    selection: Selection,
+    output_kind: UnicodeOutputKind,
+    raster: &'a Raster,
+    planned: PlannedBackend<'a>,
+}
+
+impl TerminalRenderPlan<'_> {
+    pub const fn backend(&self) -> Backend {
+        self.selection.backend()
+    }
+
+    /// Conservative or exact complete-output bound, depending on the encoder.
+    pub fn output_bytes_bound(&self) -> Result<u64, TerminalRenderError> {
+        match &self.planned {
+            PlannedBackend::Unicode(plan) => plan
+                .encoded_size_bound(self.output_kind)
+                .map_err(TerminalRenderError::Unicode),
+            PlannedBackend::Kitty { plan, .. } => u64::try_from(plan.output_bytes())
+                .map_err(|_| TerminalRenderError::OutputSizeOverflow),
+            PlannedBackend::Sixel(plan) => Ok(plan.encoded_bytes()),
+        }
+    }
+
+    /// Synchronously dispatch the common raster to the preflighted backend.
+    pub fn write(
+        &self,
+        writer: &mut impl Write,
+        cancellation: &Cancellation,
+    ) -> Result<(), TerminalRenderError> {
+        match &self.planned {
+            PlannedBackend::Unicode(plan) => plan
+                .render_cancellable(self.raster, self.output_kind, writer, cancellation)
+                .map_err(TerminalRenderError::Unicode),
+            PlannedBackend::Kitty { encoder, .. } => match encoder
+                .write(self.selection, self.raster, cancellation, writer)
+                .map_err(TerminalRenderError::Kitty)?
+            {
+                KittyWriteOutcome::Rendered { .. } => Ok(()),
+                KittyWriteOutcome::Fallback(_) | KittyWriteOutcome::Deleted => {
+                    Err(TerminalRenderError::DispatchInvariant)
+                }
+            },
+            PlannedBackend::Sixel(plan) => plan
+                .write_selected(writer, cancellation, self.selection)
+                .map_err(TerminalRenderError::Sixel),
+        }
+    }
+}
+
+/// Typed preflight or output failure from terminal raster dispatch.
+#[derive(Debug)]
+pub enum TerminalRenderError {
+    NonTtyGraphics(Backend),
+    OutputSizeOverflow,
+    DispatchInvariant,
+    Unicode(UnicodeRenderError),
+    Kitty(KittyError),
+    Sixel(SixelError),
+}
+
+impl TerminalRenderError {
+    pub const fn category(&self) -> ErrorCategory {
+        match self {
+            Self::NonTtyGraphics(_) => ErrorCategory::Unsupported,
+            Self::OutputSizeOverflow => ErrorCategory::Resource,
+            Self::DispatchInvariant => ErrorCategory::Internal,
+            Self::Unicode(error) => error.category(),
+            Self::Kitty(error) => error.category(),
+            Self::Sixel(error) => error.category(),
+        }
+    }
+}
+
+impl std::fmt::Display for TerminalRenderError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NonTtyGraphics(backend) => {
+                write!(formatter, "{backend:?} graphics require terminal output")
+            }
+            Self::OutputSizeOverflow => formatter.write_str("terminal output size overflowed"),
+            Self::DispatchInvariant => {
+                formatter.write_str("preflighted terminal backend was not dispatched")
+            }
+            Self::Unicode(error) => error.fmt(formatter),
+            Self::Kitty(error) => error.fmt(formatter),
+            Self::Sixel(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for TerminalRenderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unicode(error) => Some(error),
+            Self::Kitty(error) => Some(error),
+            Self::Sixel(error) => Some(error),
+            Self::NonTtyGraphics(_) | Self::OutputSizeOverflow | Self::DispatchInvariant => None,
+        }
+    }
 }
 
 impl Backend {
@@ -295,6 +502,63 @@ mod tests {
         time::Instant,
     };
 
+    use crate::{
+        core::{
+            LossPolicy, PointRepresentation,
+            point::{
+                PointBatch, PointColumn, PointDimensions, PointField, PointFieldSemantic,
+                PointFrameMetadata, PointSchema, PrimitiveType, Timestamp,
+            },
+        },
+        ops::{
+            ColorPolicy, DepthPolicy, InvalidProjectionCoordinatePolicy, OrthographicView,
+            Projection, RasterDimensions, Rgb8,
+        },
+    };
+
+    fn dispatch_raster() -> Raster {
+        let schema = Arc::new(
+            PointSchema::new(vec![
+                PointField::new("x", PrimitiveType::F64, 1, Some(PointFieldSemantic::X)).unwrap(),
+                PointField::new("y", PrimitiveType::F64, 1, Some(PointFieldSemantic::Y)).unwrap(),
+                PointField::new("z", PrimitiveType::F64, 1, Some(PointFieldSemantic::Z)).unwrap(),
+            ])
+            .unwrap(),
+        );
+        let dimensions = PointDimensions::new(1, 1).unwrap();
+        let batch = PointBatch::new(
+            Arc::clone(&schema),
+            Arc::new(PointFrameMetadata::new(
+                Timestamp::new(0, 0).unwrap(),
+                "map",
+                false,
+            )),
+            dimensions,
+            vec![
+                PointColumn::F64(vec![0.0]),
+                PointColumn::F64(vec![0.0]),
+                PointColumn::F64(vec![0.0]),
+            ],
+        )
+        .unwrap();
+        Projection::new(
+            RasterDimensions::new(1, 1).unwrap(),
+            OrthographicView::xy(),
+            DepthPolicy::Nearest,
+            InvalidProjectionCoordinatePolicy::Reject,
+            ColorPolicy::Uniform(Rgb8([1, 2, 3])),
+        )
+        .plan(
+            schema,
+            dimensions,
+            PointRepresentation::Columns,
+            &LossPolicy::lossless(),
+        )
+        .unwrap()
+        .execute_batch(&batch)
+        .unwrap()
+    }
+
     #[derive(Default)]
     struct FakeContext {
         stdout_tty: bool,
@@ -489,5 +753,66 @@ mod tests {
         assert_eq!(selected.backend(), Backend::Unicode);
         assert_eq!(selected.reason(), SelectionReason::QueryTimedOut);
         assert!(started.elapsed() < Duration::from_millis(500));
+    }
+
+    #[test]
+    fn dispatcher_preflights_and_routes_every_selected_backend() {
+        let raster = dispatch_raster();
+        for (backend, output_kind, prefix) in [
+            (
+                Backend::Unicode,
+                UnicodeOutputKind::Tty,
+                b"\x1b[".as_slice(),
+            ),
+            (Backend::Kitty, UnicodeOutputKind::Tty, b"\x1b_G".as_slice()),
+            (Backend::Sixel, UnicodeOutputKind::Tty, b"\x1bP".as_slice()),
+            (Backend::Plain, UnicodeOutputKind::NonTty, "▀".as_bytes()),
+        ] {
+            let selected = selection(backend, SelectionReason::Explicit, false);
+            let plan = TerminalRenderOptions::default()
+                .plan(selected, output_kind, &raster)
+                .unwrap();
+            assert_eq!(plan.backend(), backend);
+            let bound = plan.output_bytes_bound().unwrap();
+            let mut output = Vec::new();
+            plan.write(&mut output, &Cancellation::default()).unwrap();
+            assert!(output.starts_with(prefix));
+            assert!(u64::try_from(output.len()).unwrap() <= bound);
+            if backend == Backend::Plain {
+                assert!(!output.contains(&0x1b));
+            }
+        }
+    }
+
+    #[test]
+    fn dispatcher_rejects_non_tty_graphics_before_output_and_reports_cancellation() {
+        let raster = dispatch_raster();
+        for backend in [Backend::Kitty, Backend::Sixel] {
+            let error = TerminalRenderOptions::default()
+                .plan(
+                    selection(backend, SelectionReason::QueryConfirmed, true),
+                    UnicodeOutputKind::NonTty,
+                    &raster,
+                )
+                .unwrap_err();
+            assert!(
+                matches!(error, TerminalRenderError::NonTtyGraphics(found) if found == backend)
+            );
+            assert_eq!(error.category(), ErrorCategory::Unsupported);
+        }
+
+        let plan = TerminalRenderOptions::default()
+            .plan(
+                selection(Backend::Unicode, SelectionReason::Explicit, false),
+                UnicodeOutputKind::Tty,
+                &raster,
+            )
+            .unwrap();
+        let cancellation = Cancellation::default();
+        cancellation.cancel();
+        let mut output = Vec::new();
+        let error = plan.write(&mut output, &cancellation).unwrap_err();
+        assert_eq!(error.category(), ErrorCategory::Interrupted);
+        assert!(output.is_empty());
     }
 }

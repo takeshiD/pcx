@@ -1,7 +1,46 @@
 # Terminal Capability and Rendering Contract
 
-Status: capability selection and the Unicode, Kitty, and Sixel encoders are
-implemented. CLI integration remains separate work.
+Status: capability selection, the Unicode, Kitty, and Sixel encoders, and the
+one-Point-Frame `pcx render` CLI integration are implemented.
+
+## CLI integration
+
+`pcx render INPUT.mcap --topic TOPIC` selects exactly one ROS 2
+`PointCloud2` Point Frame with the established, mutually exclusive `--frame N`
+or `--at DURATION` selector. It strictly decodes that frame, performs the
+terminal-neutral CPU projection documented in [`PROJECTION.md`](./PROJECTION.md),
+and streams one inline rendering to stdout. The command is synchronous and
+frame-local; it does not enter an alternate screen or run an interactive event
+loop.
+
+The public choices are `--backend auto|unicode|kitty|sixel`, with `auto` as the
+default. `auto` dispatches the policy below. The policy's internal `plain`
+selection is rendered through the Unicode encoder's non-TTY/monochrome path;
+it is not a graphics protocol. Explicit `unicode`, `kitty`, and `sixel` skip
+detection and require TTY stdout. A mismatch is rejected before projection
+output or a terminal control sequence is written.
+
+The current CLI injects a conservative query that reports `unsupported`.
+Consequently, eligible interactive `auto` sessions currently select Unicode;
+Kitty and Sixel remain available through explicit TTY-only selection.
+
+`NO_COLOR` changes Unicode TTY output from ANSI truecolor to monochrome. It
+does not affect occupancy, enable redirected output for an explicit backend,
+or select Kitty or Sixel. Automatic redirected output is normalized to
+monochrome Unicode and contains no control sequence. Diagnostics remain on
+stderr.
+
+`--width` and `--height` set raster pixels and default to 80×48, which Unicode
+packs into 80 columns by 24 rows. `--palette-limit` defaults to 256 colors and
+applies to Sixel. `--payload-limit` defaults to 64 MiB and applies to Kitty and
+Sixel. `--memory-limit` defaults to 512 MiB.
+
+Raster dimensions and managed memory are validated before projection. Memory
+preflight combines retained Source data, coordinate materialization, raster
+storage, and backend encoder state. Kitty and Sixel also enforce a fixed
+4096×4096 ceiling and the requested payload limit; Sixel additionally enforces
+the requested 1–256-color palette limit and exact encoded size before DCS
+entry. A refusal produces no partial image.
 
 ## Capability selection
 

@@ -1,0 +1,47 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH pcx-render 1  "pcx 0.1.2"
+.SH NAME
+pcx\-render \- Render exactly one ROS 2 PointCloud2 Point Frame to stdout
+.SH SYNOPSIS
+\fBpcx render\fR <\fB\-\-topic\fR> [\fB\-\-frame\fR] [\fB\-\-at\fR] [\fB\-\-backend\fR] [\fB\-\-width\fR] [\fB\-\-height\fR] [\fB\-\-palette\-limit\fR] [\fB\-\-payload\-limit\fR] [\fB\-\-memory\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT.mcap\fR>
+.SH DESCRIPTION
+Render exactly one ROS 2 PointCloud2 Point Frame to stdout
+.SH OPTIONS
+.TP
+\fB\-\-topic\fR \fI<TOPIC>\fR
+Topic whose messages are counted as Point Frames
+.TP
+\fB\-\-frame\fR \fI<INDEX>\fR
+Zero\-based Point Frame index after Topic selection
+.TP
+\fB\-\-at\fR \fI<DURATION>\fR
+First Point Frame at or after this duration from recording start
+.TP
+\fB\-\-backend\fR \fI<BACKEND>\fR [default: auto]
+Terminal backend, selected conservatively by default
+.br
+
+.br
+[\fIpossible values: \fRauto, unicode, kitty, sixel]
+.TP
+\fB\-\-width\fR \fI<PIXELS>\fR [default: 80]
+Projection raster width in pixels
+.TP
+\fB\-\-height\fR \fI<PIXELS>\fR [default: 48]
+Projection raster height in pixels
+.TP
+\fB\-\-palette\-limit\fR \fI<COLORS>\fR [default: 256]
+Maximum Sixel palette size
+.TP
+\fB\-\-payload\-limit\fR \fI<BYTES>\fR [default: 67108864]
+Maximum encoded Kitty or Sixel payload bytes
+.TP
+\fB\-\-memory\-limit\fR \fI<BYTES>\fR [default: 536870912]
+Hard managed\-memory limit in bytes
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIINPUT.mcap\fR>
+MCAP Source containing the Point Frame

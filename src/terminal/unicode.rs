@@ -2,7 +2,10 @@
 
 use std::{error::Error as StdError, fmt, io, io::Write};
 
-use crate::ops::{Raster, RasterDimensions, Rgb8};
+use crate::{
+    core::{Cancellation, ErrorCategory},
+    ops::{Raster, RasterDimensions, Rgb8},
+};
 
 const UPPER_HALF_BLOCK: &str = "▀";
 const LOWER_HALF_BLOCK: &str = "▄";
@@ -155,22 +158,55 @@ impl UnicodeRenderPlan {
         output_kind: UnicodeOutputKind,
         output: &mut impl Write,
     ) -> Result<(), UnicodeRenderError> {
+        self.render_inner(raster, output_kind, output, None)
+    }
+
+    /// Stream one frame while observing the shared synchronous cancellation signal.
+    pub fn render_cancellable(
+        self,
+        raster: &Raster,
+        output_kind: UnicodeOutputKind,
+        output: &mut impl Write,
+        cancellation: &Cancellation,
+    ) -> Result<(), UnicodeRenderError> {
+        self.render_inner(raster, output_kind, output, Some(cancellation))
+    }
+
+    fn render_inner(
+        self,
+        raster: &Raster,
+        output_kind: UnicodeOutputKind,
+        output: &mut impl Write,
+        cancellation: Option<&Cancellation>,
+    ) -> Result<(), UnicodeRenderError> {
         if raster.dimensions() != self.raster_dimensions {
             return Err(UnicodeRenderError::RasterDoesNotMatchPlan);
         }
         self.encoded_size_bound(output_kind)?;
+        check_cancelled(cancellation)?;
 
         let color = self.color_policy_for(output_kind);
         for cell_row in 0..self.cell_dimensions.rows {
+            check_cancelled(cancellation)?;
             let upper_row = cell_row * 2;
             let lower_row = upper_row + 1;
             for column in 0..self.cell_dimensions.columns {
+                check_cancelled(cancellation)?;
                 let upper = raster.pixel(upper_row, column).map(|pixel| pixel.color());
                 let lower = raster.pixel(lower_row, column).map(|pixel| pixel.color());
                 write_cell(output, color, upper, lower)?;
             }
             output.write_all(b"\n")?;
         }
+        check_cancelled(cancellation)?;
+        Ok(())
+    }
+}
+
+fn check_cancelled(cancellation: Option<&Cancellation>) -> Result<(), UnicodeRenderError> {
+    if cancellation.is_some_and(Cancellation::is_cancelled) {
+        Err(UnicodeRenderError::Interrupted)
+    } else {
         Ok(())
     }
 }
@@ -221,7 +257,21 @@ pub enum UnicodeRenderError {
     RasterSizeOverflow,
     OutputSizeOverflow,
     RasterDoesNotMatchPlan,
+    Interrupted,
     Io(io::Error),
+}
+
+impl UnicodeRenderError {
+    pub const fn category(&self) -> ErrorCategory {
+        match self {
+            Self::ZeroCellDimension | Self::RasterSizeOverflow | Self::OutputSizeOverflow => {
+                ErrorCategory::Resource
+            }
+            Self::RasterDoesNotMatchPlan => ErrorCategory::Internal,
+            Self::Interrupted => ErrorCategory::Interrupted,
+            Self::Io(_) => ErrorCategory::Io,
+        }
+    }
 }
 
 impl fmt::Display for UnicodeRenderError {
@@ -237,6 +287,7 @@ impl fmt::Display for UnicodeRenderError {
             Self::RasterDoesNotMatchPlan => {
                 formatter.write_str("Unicode raster dimensions do not match the render plan")
             }
+            Self::Interrupted => formatter.write_str("Unicode output was interrupted"),
             Self::Io(error) => write!(formatter, "Unicode output failed: {error}"),
         }
     }
@@ -249,7 +300,8 @@ impl StdError for UnicodeRenderError {
             Self::ZeroCellDimension
             | Self::RasterSizeOverflow
             | Self::OutputSizeOverflow
-            | Self::RasterDoesNotMatchPlan => None,
+            | Self::RasterDoesNotMatchPlan
+            | Self::Interrupted => None,
         }
     }
 }

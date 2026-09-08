@@ -23,6 +23,8 @@ description: What pcx implements today and what comes next.
 
 - faithful one-message encoded MCAP passthrough.
 - strict ASCII and little-endian-binary PCD reader adapter.
+- one-Point-Frame `pcx render` command with bounded CPU projection and
+  Unicode/ANSI, Kitty, and Sixel output.
 
 ## Later milestones
 
@@ -34,9 +36,9 @@ schema; a user-facing command is not yet exposed.
 The bounded LAS/LAZ reader/writer adapter is also implemented behind the
 common schema; its user-facing commands remain future work.
 
-- **Terminal rendering:** deterministic CPU rasterizer, conservative capability
-  selection, and bounded Unicode, Kitty, and Sixel backends are available
-  internally; CLI integration remains future work.
+- **Terminal rendering:** deterministic CPU rasterization, conservative
+  capability selection, and bounded Unicode, Kitty, and Sixel output are
+  available through the one-shot `pcx render` command.
 - **Hardening:** longer fuzz runs, performance baselines, musl investigation and resource tuning.
 
 ## Explicit non-goals

@@ -28,6 +28,9 @@ _pcx() {
             pcx,passthrough)
                 cmd="pcx__passthrough"
                 ;;
+            pcx,render)
+                cmd="pcx__render"
+                ;;
             pcx,topics)
                 cmd="pcx__topics"
                 ;;
@@ -43,6 +46,9 @@ _pcx() {
             pcx__help,passthrough)
                 cmd="pcx__help__passthrough"
                 ;;
+            pcx__help,render)
+                cmd="pcx__help__render"
+                ;;
             pcx__help,topics)
                 cmd="pcx__help__topics"
                 ;;
@@ -53,7 +59,7 @@ _pcx() {
 
     case "${cmd}" in
         pcx)
-            opts="-h -V --help --version info topics extract passthrough help"
+            opts="-h -V --help --version info topics extract passthrough render help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -109,7 +115,7 @@ _pcx() {
             return 0
             ;;
         pcx__help)
-            opts="info topics extract passthrough help"
+            opts="info topics extract passthrough render help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -165,6 +171,20 @@ _pcx() {
             return 0
             ;;
         pcx__help__passthrough)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        pcx__help__render)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -235,6 +255,56 @@ _pcx() {
                     ;;
                 --compression)
                     COMPREPLY=($(compgen -W "none zstd lz4" -- "${cur}"))
+                    return 0
+                    ;;
+                --memory-limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        pcx__render)
+            opts="-h --topic --frame --at --backend --width --height --palette-limit --payload-limit --memory-limit --help <INPUT.mcap>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --topic)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --frame)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --at)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --backend)
+                    COMPREPLY=($(compgen -W "auto unicode kitty sixel" -- "${cur}"))
+                    return 0
+                    ;;
+                --width)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --height)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --palette-limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --payload-limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
                 --memory-limit)

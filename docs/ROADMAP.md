@@ -42,11 +42,12 @@ unused because GitHub returned an error during initial backlog creation.
 
 ## v0.4 — Terminal
 
-- [#26 Deterministic CPU projection](https://github.com/takeshiD/pcx/issues/26)
-- [#27 Unicode rendering](https://github.com/takeshiD/pcx/issues/27)
+- [#26 Deterministic CPU projection](https://github.com/takeshiD/pcx/issues/26) — implemented
+- [#27 Unicode rendering](https://github.com/takeshiD/pcx/issues/27) — implemented encoder
 - [#28 Kitty graphics rendering](https://github.com/takeshiD/pcx/issues/28) — implemented encoder
 - [#29 Capability detection and fallback](https://github.com/takeshiD/pcx/issues/29) — implemented policy seam
 - [#30 Sixel rendering](https://github.com/takeshiD/pcx/issues/30) — implemented encoder seam
+- [#80 Terminal rendering CLI integration](https://github.com/takeshiD/pcx/issues/80) — implemented
 
 ## Hardening
 

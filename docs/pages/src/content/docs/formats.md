@@ -12,13 +12,37 @@ description: Accepted format boundaries and fidelity rules.
 | PCD | ASCII and little-endian binary | Binary and ASCII | Reader adapter available; no input CLI command yet |
 | PLY 1.0 | Scalar vertices in ASCII and both binary byte orders | ASCII and both binary byte orders | Adapter available; no CLI command yet |
 | LAS/LAZ | Bounded synchronous batches | Bounded synchronous batches | Library adapter available; CLI not yet exposed |
+| Terminal raster | One selected MCAP Point Frame | Unicode/ANSI, Kitty, or Sixel | Available through `pcx render` |
 
-LAS/LAZ CLI integration and terminal-rendering CLI integration are later work.
-The CPU rasterizer, conservative capability selection, and Unicode, Kitty, and
-Sixel terminal backends are available internally. AWS/S3 transports and cloud
-credentials are not product features.
+LAS/LAZ CLI integration remains later work. The CPU rasterizer, conservative
+capability selection, and Unicode, Kitty, and Sixel terminal backends are
+available through `pcx render`. AWS/S3 transports and cloud credentials are not
+product features.
 
-## Sixel terminal protocol
+## Terminal rendering
+
+`pcx render` selects one ROS 2 `PointCloud2` Point Frame from MCAP and projects
+it into a bounded terminal-neutral raster. Projection is synchronous,
+orthographic, axis-aligned, fitted to the requested raster, and frame-local. It
+does not modify or replace the Source Point Frame.
+
+Unicode rendering packs two vertical raster pixels into one terminal cell with
+`▀`, `▄`, and `█`. Interactive color uses ANSI SGR truecolor; `NO_COLOR` and all
+non-TTY output use monochrome occupancy instead. Non-TTY bytes contain UTF-8
+block glyphs, spaces, and LF only—no ANSI or graphics-protocol escapes.
+
+Kitty streams transparent RGBA through bounded base64 chunks. Sixel streams a
+transparent-background, deterministic palette image and refuses more than its
+configured palette limit rather than quantizing colors. Both graphics backends
+require TTY stdout. Automatic selection never trusts `TERM` alone to authorize
+graphics output: Kitty or Sixel must be confirmed by the bounded capability
+query, otherwise output falls back to Unicode or safe plain text. See the
+[terminal contract](https://github.com/takeshiD/pcx/blob/main/docs/TERMINAL.md)
+for exact bounds, detection order, byte alphabets, and interruption cleanup.
+The current CLI process query reports unsupported, so `auto` does not yet
+authorize Kitty or Sixel; select either explicitly on TTY stdout.
+
+### Sixel terminal protocol
 
 The Sixel adapter streams a deterministic transparent-background image from
 the common raster. It refuses dimensions, distinct colors, or exact encoded

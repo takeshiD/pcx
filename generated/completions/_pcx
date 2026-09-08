@@ -74,6 +74,22 @@ _arguments "${_arguments_options[@]}" : \
 ':input -- MCAP Source containing the encoded message:_files' \
 && ret=0
 ;;
+(render)
+_arguments "${_arguments_options[@]}" : \
+'--topic=[Topic whose messages are counted as Point Frames]:TOPIC:_default' \
+'--frame=[Zero-based Point Frame index after Topic selection]:INDEX:_default' \
+'--at=[First Point Frame at or after this duration from recording start]:DURATION:_default' \
+'--backend=[Terminal backend, selected conservatively by default]:BACKEND:(auto unicode kitty sixel)' \
+'--width=[Projection raster width in pixels]:PIXELS:_default' \
+'--height=[Projection raster height in pixels]:PIXELS:_default' \
+'--palette-limit=[Maximum Sixel palette size]:COLORS:_default' \
+'--payload-limit=[Maximum encoded Kitty or Sixel payload bytes]:BYTES:_default' \
+'--memory-limit=[Hard managed-memory limit in bytes]:BYTES:_default' \
+'-h[Print help]' \
+'--help[Print help]' \
+':input -- MCAP Source containing the Point Frame:_files' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 ":: :_pcx__help_commands" \
@@ -102,6 +118,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(render)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -122,6 +142,7 @@ _pcx_commands() {
 'topics:Discover Topics, MCAP Channels, Schemas, and message counts' \
 'extract:Extract exactly one ROS 2 PointCloud2 Point Frame as PCD' \
 'passthrough:Copy one selected encoded message into a faithful reduced MCAP' \
+'render:Render exactly one ROS 2 PointCloud2 Point Frame to stdout' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'pcx commands' commands "$@"
@@ -138,6 +159,7 @@ _pcx__help_commands() {
 'topics:Discover Topics, MCAP Channels, Schemas, and message counts' \
 'extract:Extract exactly one ROS 2 PointCloud2 Point Frame as PCD' \
 'passthrough:Copy one selected encoded message into a faithful reduced MCAP' \
+'render:Render exactly one ROS 2 PointCloud2 Point Frame to stdout' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'pcx help commands' commands "$@"
@@ -162,6 +184,11 @@ _pcx__help__passthrough_commands() {
     local commands; commands=()
     _describe -t commands 'pcx help passthrough commands' commands "$@"
 }
+(( $+functions[_pcx__help__render_commands] )) ||
+_pcx__help__render_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx help render commands' commands "$@"
+}
 (( $+functions[_pcx__help__topics_commands] )) ||
 _pcx__help__topics_commands() {
     local commands; commands=()
@@ -176,6 +203,11 @@ _pcx__info_commands() {
 _pcx__passthrough_commands() {
     local commands; commands=()
     _describe -t commands 'pcx passthrough commands' commands "$@"
+}
+(( $+functions[_pcx__render_commands] )) ||
+_pcx__render_commands() {
+    local commands; commands=()
+    _describe -t commands 'pcx render commands' commands "$@"
 }
 (( $+functions[_pcx__topics_commands] )) ||
 _pcx__topics_commands() {

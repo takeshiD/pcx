@@ -4,7 +4,7 @@
 
 `pcx`は、edge Linux上にある点群recordingをshellから調査・縮小するためのtoolboxです。
 
-> **開発状況:** 開発中です。実行ファイルはMCAP調査、1 frameのPCD抽出、1 messageのfaithfulなMCAP passthroughを提供します。
+> **開発状況:** 開発中です。実行ファイルはMCAP調査、1 frameのPCD抽出、1 messageのfaithfulなMCAP passthrough、1 Point Frameのterminal renderingを提供します。
 
 ## なぜpcxか
 
@@ -30,7 +30,7 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 | bounded synchronous LAS/LAZ library I/O | 利用可能 |
 | crop、field選択、frame単位voxel | 計画中 |
 | PLY scalar-vertex adapter（CLI integration は今後） | 内部で利用可能 |
-| CPU projection、terminal selection／backend（CLIは今後） | 内部実装済み |
+| `pcx render` CPU projection／terminal出力 | 利用可能 |
 | LAS/LAZ CLI command | 計画中 |
 | AWS/S3 upload、cloud credential | 対象外 |
 | macOS／Windows | 将来候補・時期未定 |
@@ -79,6 +79,9 @@ pcx passthrough run.mcap \
   --frame 0 \
   --compression zstd \
   -o selected.mcap
+pcx render run.mcap \
+  --topic /lidar/points \
+  --frame 0
 ```
 
 `--frame INDEX`と`--at DURATION`のどちらか一方を指定します。binary PCDが
@@ -91,6 +94,15 @@ encoded MessageとChannel／Schema関係に加え、recording-levelのattachment
 metadata、application-private recordを保持します。派生container構造、statistics、
 CRCはdeterministicに再生成し、memoryをboundするためattachment／metadata indexは
 省略します。
+
+`pcx render`は選択した1 Point Frameをdecode／projectionし、inline imageを1枚
+stdoutへ出力します。defaultの`--backend auto`では、redirectされたstdoutには
+control sequenceを含まないdeterministicなUnicode textを出力します。interactive
+terminalではconservativeにUnicodeへfallbackします。現在のprocess queryはgraphics
+protocolをautomaticには許可しません。interactiveなbackendを固定するには`--backend unicode`、
+`kitty`、`sixel`を使います。graphics／ANSIを使うbackendをredirected stdoutへ
+明示指定した場合は、escape sequenceを書き込む前に拒否します。`NO_COLOR`は
+Unicode出力のANSI colorを無効にします。
 
 transferは既存のshell toolに委ねます。
 

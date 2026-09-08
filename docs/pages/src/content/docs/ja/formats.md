@@ -12,12 +12,35 @@ description: 採用するフォーマット境界と忠実性の規則。
 | PCD | ASCII と little-endian binary | binary / ASCII | reader adapter は利用可能、input CLI command は未実装 |
 | PLY 1.0 | ASCII と両方の binary byte order の scalar vertex | ASCII と両方の binary byte order | adapter は利用可能、CLI command は未実装 |
 | LAS/LAZ | bounded synchronous batch | bounded synchronous batch | library adapterは利用可能、CLIは未公開 |
+| Terminal raster | 選択した1 MCAP Point Frame | Unicode／ANSI、Kitty、Sixel | `pcx render`で利用可能 |
 
-LAS/LAZとterminal renderingのCLI integrationは後続です。common CPU projection、
-conservativeなterminal capability selection、Unicode、Kitty、Sixel backendは
-内部adapterとして利用可能です。AWS/S3転送やcloud credentialは製品機能に含めません。
+LAS/LAZのCLI integrationは後続です。common CPU projection、conservativeなterminal
+capability selection、Unicode、Kitty、Sixel backendは`pcx render`から利用できます。
+AWS/S3転送やcloud credentialは製品機能に含めません。
 
-## Sixel terminal protocol
+## Terminal rendering
+
+`pcx render`はMCAPからROS 2 `PointCloud2` Point Frameを1件選び、boundedかつ
+terminal-neutralなrasterへprojectionします。projectionはsynchronous、orthographic、
+axis-alignedで、要求したrasterへfitするframe-localな処理です。Source Point Frameを
+変更したり置き換えたりしません。
+
+Unicode renderingは縦2 raster pixelを1 terminal cellへまとめ、`▀`、`▄`、`█`を
+使います。interactive colorはANSI SGR truecolorです。`NO_COLOR`とすべてのnon-TTY
+出力ではmonochrome occupancyを使います。non-TTYのbyte列はUTF-8 block glyph、space、
+LFだけで、ANSI／graphics protocol escapeを含みません。
+
+Kittyはtransparent RGBAをbounded base64 chunkでstreamingします。Sixelはtransparent
+backgroundのdeterministicなpalette imageをstreamingし、colorをquantizeせず、設定した
+palette limitを超える場合は拒否します。どちらのgraphics backendもTTY stdoutが必要です。
+automatic selectionは`TERM`だけをgraphics出力の根拠にせず、時間制限付きcapability
+queryでKitty／Sixelが確認された場合だけ選択します。それ以外はUnicodeまたはsafeな
+plain textへfallbackします。正確なbound、detection順、出力byte、interrupt時cleanupは
+[terminal contract](https://github.com/takeshiD/pcx/blob/main/docs/TERMINAL.md)を参照してください。
+現在のCLI process queryはunsupportedを返すため、`auto`はまだKitty／Sixelを許可しません。
+TTY stdoutではどちらも明示指定できます。
+
+### Sixel terminal protocol
 
 Sixel adapterはcommon rasterからtransparent backgroundのdeterministicなimageを
 streamingします。呼び出し側が設定したdimension、distinct color数、正確な

@@ -4,8 +4,10 @@ use std::{
     ffi::OsString,
     fs::File,
     io::{self, Write},
+    num::NonZeroU32,
     path::PathBuf,
     process::ExitCode,
+    sync::Arc,
     time::Duration,
 };
 
@@ -14,16 +16,31 @@ use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use crate::{
     core::{
         ByteBound, Cancellation, Destination, Error, ErrorCategory, ErrorReport, ExecutionPlan,
-        ExecutionReport, FrameSelector, JobKind, JobSpec, PipelineMemoryRequirements, Planner,
-        Result as CoreResult, SourceSpec, write_output,
+        ExecutionReport, FrameSelector, JobKind, JobSpec, LossPolicy, PipelineMemoryRequirements,
+        Planner, PointRepresentation, Result as CoreResult, SourceSpec, write_output,
     },
     mcap::{
         self, DiscoveredChannel, PassthroughCompression, PassthroughError, ProbeError,
         SelectionError, Source, SourceOptions, TopicDiscovery,
     },
+    ops::{
+        ColorPolicy, DepthPolicy, InvalidProjectionCoordinatePolicy, OrthographicView, Projection,
+        ProjectionError, RasterDimensions, Rgb8,
+    },
     pcd::{self, Encoding},
     ros2,
+    terminal::{
+        Backend, BackendChoice, CapabilityQuery, DEFAULT_SIXEL_LIMITS, DetectionContext,
+        ProcessContext, QueryResult, SixelLimits, TerminalRenderError, TerminalRenderOptions,
+        UnicodeColorPolicy, UnicodeOutputKind, kitty::KittyLimits, select_backend,
+    },
 };
+
+const DEFAULT_RENDER_WIDTH: usize = 80;
+const DEFAULT_RENDER_HEIGHT: usize = 48;
+const DEFAULT_RENDER_PAYLOAD_LIMIT: u64 = 64 * 1024 * 1024;
+const DEFAULT_RENDER_MEMORY_LIMIT: u64 = 512 * 1024 * 1024;
+const RENDER_IMAGE_ID: NonZeroU32 = NonZeroU32::MIN;
 
 struct InterruptHandler {
     cancellation: Cancellation,
@@ -148,6 +165,8 @@ enum Command {
     Extract(ExtractArgs),
     /// Copy one selected encoded message into a faithful reduced MCAP.
     Passthrough(PassthroughArgs),
+    /// Render exactly one ROS 2 PointCloud2 Point Frame to stdout.
+    Render(RenderArgs),
 }
 
 impl Cli {
@@ -296,6 +315,74 @@ struct PassthroughArgs {
     memory_limit: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum RenderBackend {
+    Auto,
+    Unicode,
+    Kitty,
+    Sixel,
+}
+
+impl From<RenderBackend> for BackendChoice {
+    fn from(value: RenderBackend) -> Self {
+        match value {
+            RenderBackend::Auto => Self::Auto,
+            RenderBackend::Unicode => Self::Unicode,
+            RenderBackend::Kitty => Self::Kitty,
+            RenderBackend::Sixel => Self::Sixel,
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("selector")
+        .required(true)
+        .multiple(false)
+        .args(["frame", "at"])
+))]
+struct RenderArgs {
+    /// MCAP Source containing the Point Frame.
+    #[arg(value_name = "INPUT.mcap")]
+    input: PathBuf,
+
+    /// Topic whose messages are counted as Point Frames.
+    #[arg(long, value_name = "TOPIC")]
+    topic: String,
+
+    /// Zero-based Point Frame index after Topic selection.
+    #[arg(long, value_name = "INDEX")]
+    frame: Option<u64>,
+
+    /// First Point Frame at or after this duration from recording start.
+    #[arg(long, value_name = "DURATION", value_parser = parse_duration)]
+    at: Option<Duration>,
+
+    /// Terminal backend, selected conservatively by default.
+    #[arg(long, value_enum, default_value = "auto")]
+    backend: RenderBackend,
+
+    /// Projection raster width in pixels.
+    #[arg(long, value_name = "PIXELS", default_value_t = DEFAULT_RENDER_WIDTH)]
+    width: usize,
+
+    /// Projection raster height in pixels.
+    #[arg(long, value_name = "PIXELS", default_value_t = DEFAULT_RENDER_HEIGHT)]
+    height: usize,
+
+    /// Maximum Sixel palette size.
+    #[arg(long, value_name = "COLORS", default_value_t = 256)]
+    palette_limit: u16,
+
+    /// Maximum encoded Kitty or Sixel payload bytes.
+    #[arg(long, value_name = "BYTES", default_value_t = DEFAULT_RENDER_PAYLOAD_LIMIT)]
+    payload_limit: u64,
+
+    /// Hard managed-memory limit in bytes.
+    #[arg(long, value_name = "BYTES", default_value_t = DEFAULT_RENDER_MEMORY_LIMIT)]
+    memory_limit: u64,
+}
+
 /// Parse command-line arguments without terminating the process.
 pub fn try_run_from<I, T>(args: I) -> Result<(), clap::Error>
 where
@@ -303,6 +390,32 @@ where
     T: Into<OsString> + Clone,
 {
     Cli::try_parse_from(args).map(|_| ())
+}
+
+/// Run `render` with injected terminal facts and capability results.
+///
+/// This is an internal integration-test seam; the supported compatibility
+/// surface remains the `pcx` executable.
+#[doc(hidden)]
+pub fn try_run_render_from_with<I, T, C, Q>(
+    args: I,
+    output: &mut impl Write,
+    context: &C,
+    query: Arc<Q>,
+) -> Result<(), String>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+    C: DetectionContext,
+    Q: CapabilityQuery,
+{
+    let cli = Cli::try_parse_from(args).map_err(|error| error.to_string())?;
+    match cli.command {
+        Some(Command::Render(args)) => {
+            run_render(args, output, context, query).map_err(|error| error.message)
+        }
+        _ => Err("test seam requires the render command".to_owned()),
+    }
 }
 
 #[derive(Debug)]
@@ -336,10 +449,171 @@ fn run(cli: Cli, output: &mut impl Write) -> Result<(), RunFailure> {
         Some(Command::Topics(args)) => run_topics(args, output),
         Some(Command::Extract(args)) => run_extract(args),
         Some(Command::Passthrough(args)) => run_passthrough(args),
+        Some(Command::Render(args)) => run_render(
+            args,
+            output,
+            &ProcessContext,
+            Arc::new(ConservativeCapabilityQuery),
+        ),
         None => {
             command().write_help(output).map_err(RunFailure::output)?;
             writeln!(output).map_err(RunFailure::output)
         }
+    }
+}
+
+#[derive(Debug)]
+struct ConservativeCapabilityQuery;
+
+impl CapabilityQuery for ConservativeCapabilityQuery {
+    fn query(&self, _timeout: Duration) -> QueryResult {
+        QueryResult::Unsupported
+    }
+}
+
+fn run_render<C, Q>(
+    args: RenderArgs,
+    output: &mut impl Write,
+    context: &C,
+    query: Arc<Q>,
+) -> Result<(), RunFailure>
+where
+    C: DetectionContext,
+    Q: CapabilityQuery,
+{
+    let selection =
+        select_backend(args.backend.into(), context, query).map_err(|error| RunFailure {
+            category: ErrorCategory::Unsupported,
+            message: error.to_string(),
+            broken_pipe: false,
+        })?;
+    let dimensions = RasterDimensions::new(args.width, args.height).map_err(projection_failure)?;
+    let selector = match (args.frame, args.at) {
+        (Some(index), None) => FrameSelector::Index(index),
+        (None, Some(duration)) => FrameSelector::At(duration),
+        _ => unreachable!("clap requires exactly one frame selector"),
+    };
+    let source_spec = SourceSpec::file(args.input).map_err(RunFailure::core)?;
+    let job = JobSpec::render(source_spec, args.topic, selector).map_err(RunFailure::core)?;
+    let options = SourceOptions::default();
+    plan_selection_job(job.clone(), options, args.memory_limit)?;
+
+    let handler = InterruptHandler::install().map_err(|error| RunFailure {
+        category: ErrorCategory::Internal,
+        message: format!("could not install interrupt handler: {error}"),
+        broken_pipe: false,
+    })?;
+    check_render_cancelled(&handler.cancellation)?;
+
+    let file = File::open(job.source().path()).map_err(|source| RunFailure {
+        category: ErrorCategory::Io,
+        message: format!(
+            "failed to open Source '{}': {source}",
+            job.source().path().display()
+        ),
+        broken_pipe: false,
+    })?;
+    let mut source = Source::new(file, options).map_err(probe_failure)?;
+    let (topic, selector) = job.render_selection().expect("render selection");
+    let selected =
+        mcap::select_topic_message(&mut source, topic, selector).map_err(selection_failure)?;
+    drop(source);
+    check_render_cancelled(&handler.cancellation)?;
+
+    if !selected.is_ros2_pointcloud2_candidate() {
+        return Err(RunFailure::core(Error::new(
+            ErrorCategory::Unsupported,
+            format!(
+                "selected MCAP Channel {} is not declared as ROS 2 PointCloud2 with ros2msg/CDR encoding",
+                selected.channel_id()
+            ),
+        )));
+    }
+    let log_time = selected.log_time();
+    let publish_time = selected.publish_time();
+    let view = ros2::pointcloud2::decode(selected.into_data())
+        .map_err(|error| RunFailure {
+            category: ErrorCategory::InvalidData,
+            message: error.to_string(),
+            broken_pipe: false,
+        })?
+        .with_container_times(log_time, publish_time);
+    check_render_cancelled(&handler.cancellation)?;
+
+    let projection = Projection::new(
+        dimensions,
+        OrthographicView::xy(),
+        DepthPolicy::Nearest,
+        InvalidProjectionCoordinatePolicy::Drop,
+        ColorPolicy::Uniform(Rgb8([255, 255, 255])),
+    );
+    let projection_plan = projection
+        .plan(
+            Arc::new(view.schema().clone()),
+            view.layout().dimensions(),
+            PointRepresentation::View,
+            &LossPolicy::lossless(),
+        )
+        .map_err(RunFailure::core)?;
+    let unicode_color = if context.environment("NO_COLOR").is_some() {
+        UnicodeColorPolicy::Monochrome
+    } else {
+        UnicodeColorPolicy::TrueColor
+    };
+    let sixel_limits = if selection.backend() == Backend::Sixel {
+        SixelLimits::new(4_096, 4_096, args.palette_limit, args.payload_limit)
+            .map_err(|error| terminal_failure(TerminalRenderError::Sixel(error)))?
+    } else {
+        DEFAULT_SIXEL_LIMITS
+    };
+    let render_options = TerminalRenderOptions::new(
+        unicode_color,
+        RENDER_IMAGE_ID,
+        KittyLimits::new(4_096, 4_096, args.payload_limit),
+        sixel_limits,
+    );
+    let encoder_buffer = render_options.encoder_memory_bound(selection);
+    let requirements = projection_plan
+        .memory_requirements_for_view(
+            &view,
+            encoder_buffer,
+            ByteBound::bounded(0),
+            ByteBound::bounded(0),
+        )
+        .map_err(RunFailure::core)?;
+    Planner::new()
+        .plan(job, requirements, args.memory_limit)
+        .map_err(RunFailure::core)?;
+    check_render_cancelled(&handler.cancellation)?;
+
+    let raster = projection_plan
+        .execute_view(&view)
+        .map_err(projection_failure)?;
+    check_render_cancelled(&handler.cancellation)?;
+    let output_kind = if context.stdout_is_terminal() {
+        UnicodeOutputKind::Tty
+    } else {
+        UnicodeOutputKind::NonTty
+    };
+    let render_plan = render_options
+        .plan(selection, output_kind, &raster)
+        .map_err(terminal_failure)?;
+    render_plan.output_bytes_bound().map_err(terminal_failure)?;
+    render_plan
+        .write(output, &handler.cancellation)
+        .map_err(terminal_failure)?;
+    output.flush().map_err(RunFailure::output)
+}
+
+fn check_render_cancelled(cancellation: &Cancellation) -> Result<(), RunFailure> {
+    if cancellation.is_cancelled() {
+        Err(RunFailure {
+            category: ErrorCategory::Interrupted,
+            message: "rendering was interrupted".to_owned(),
+            broken_pipe: false,
+        })
+    } else {
+        Ok(())
     }
 }
 
@@ -616,6 +890,29 @@ fn pcd_failure(error: pcd::Error) -> RunFailure {
         },
         message: error.to_string(),
         broken_pipe: false,
+    }
+}
+
+fn projection_failure(error: ProjectionError) -> RunFailure {
+    RunFailure {
+        category: error.category(),
+        message: error.to_string(),
+        broken_pipe: false,
+    }
+}
+
+fn terminal_failure(error: TerminalRenderError) -> RunFailure {
+    let broken_pipe = matches!(
+        &error,
+        TerminalRenderError::Unicode(crate::terminal::UnicodeRenderError::Io(source))
+            | TerminalRenderError::Kitty(crate::terminal::kitty::KittyError::Io(source))
+            | TerminalRenderError::Sixel(crate::terminal::SixelError::Io(source))
+                if source.kind() == io::ErrorKind::BrokenPipe
+    );
+    RunFailure {
+        category: error.category(),
+        message: error.to_string(),
+        broken_pipe,
     }
 }
 

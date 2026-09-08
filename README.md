@@ -4,7 +4,7 @@
 
 `pcx` is a shell-native toolbox for inspecting and reducing point-cloud recordings on edge Linux systems.
 
-> **Project status:** active development. The executable provides MCAP inspection, one-frame PCD extraction, and faithful one-message MCAP passthrough.
+> **Project status:** active development. The executable provides MCAP inspection, one-frame PCD extraction, faithful one-message MCAP passthrough, and terminal rendering of one Point Frame.
 
 ## Why pcx?
 
@@ -30,7 +30,7 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 | Bounded synchronous LAS/LAZ library I/O            | Available             |
 | Crop, field selection, frame-local voxel reduction | Planned               |
 | PLY scalar-vertex adapter (CLI integration later)  | Available internally  |
-| CPU projection and terminal backends (CLI later)    | Available internally  |
+| `pcx render` CPU projection and terminal output    | Available             |
 | LAS/LAZ CLI commands                                | Planned               |
 | AWS/S3 upload and cloud credentials                | Out of scope          |
 | macOS and Windows support                          | Undecided future work |
@@ -80,6 +80,9 @@ pcx passthrough run.mcap \
   --frame 0 \
   --compression zstd \
   -o selected.mcap
+pcx render run.mcap \
+  --topic /lidar/points \
+  --frame 0
 ```
 
 Choose exactly one of `--frame INDEX` and `--at DURATION`. Binary PCD is the
@@ -91,6 +94,16 @@ preserves the selected encoded Message and its Channel/Schema relationship,
 plus recording-level attachments, metadata, and application-private records.
 Derived container structure, statistics, and CRCs are regenerated
 deterministically; attachment and metadata indexes are omitted to bound memory.
+
+`pcx render` decodes and projects exactly one selected Point Frame, then writes
+one inline image to stdout. `--backend auto` is the default: redirected stdout
+uses deterministic control-free Unicode text, while an interactive terminal
+falls back conservatively to Unicode; the current process query does not
+auto-authorize a graphics protocol. Use `--backend unicode`, `kitty`, or
+`sixel` to make an interactive
+choice explicit. Explicit graphics and ANSI-capable backends are rejected when
+stdout is redirected, before an escape sequence is written. `NO_COLOR`
+disables ANSI color in Unicode output.
 
 Transfer remains the shell's job:
 

@@ -32,6 +32,17 @@ pcx passthrough run.mcap --topic /lidar/points --frame 0 -o selected.mcap
 このcontainer pathはPointCloud2をdecodeせず、encoded messageとrecording-level
 recordを保持します。
 
+## 1 Point Frameをterminalへrender
+
+```bash
+pcx render run.mcap --topic /lidar/points --frame 0
+```
+
+defaultの`--backend auto`はconservativeにfallbackし、現在のprocess queryは
+Kitty／Sixelをautomaticには許可しません。interactiveなtext-cell renderingを固定するには
+`--backend unicode`を使います。stdoutをredirectした場合、automatic outputは
+ANSI／graphics protocol escapeを含まないdeterministicなmonochrome Unicodeです。
+
 cloud clientではなくshellで転送します。
 
 ```bash

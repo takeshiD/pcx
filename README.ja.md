@@ -37,19 +37,20 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 
 ## Install
 
-最初のcrates.io releaseまではsourceからinstallします。
+crates.ioで公開されているcommandをinstallします。
+
+```bash
+cargo install pcx-cli --locked
+pcx --version
+```
+
+現在のcheckoutをsourceからbuildする場合:
 
 ```bash
 git clone https://github.com/takeshiD/pcx.git
 cd pcx
 cargo install --path . --locked
 pcx --version
-```
-
-将来のregistry install commandは次の予定です。
-
-```bash
-cargo install pcx-cli --locked
 ```
 
 Nixを利用する場合:
@@ -63,9 +64,36 @@ Nix packageとLinux release archiveにはBash、Zsh、Fishのcompletionとmanual
 含まれます。配置先と再生成手順は
 [install guide](https://takeshid.github.io/pcx/ja/installation/)を参照してください。
 
-## v0.1 workflow
+## Quick Start
 
-MCAP metadata調査、Topic discovery、1 frameのextractは現在利用可能です。
+repositoryには小さな有効なROS 2 `PointCloud2` MCAP fixtureが含まれるため、sample
+dataを別途探さずにinspectからextractまで試せます。
+
+```bash
+git clone https://github.com/takeshiD/pcx.git
+cd pcx
+
+pcx topics tests/fixtures/valid/pointcloud2.mcap
+pcx render tests/fixtures/valid/pointcloud2.mcap \
+  --topic /lidar/points --frame 0 --width 32 --height 12
+pcx extract tests/fixtures/valid/pointcloud2.mcap \
+  --topic /lidar/points --frame 0 --encoding ascii -o /tmp/frame.pcd
+```
+
+最初のcommandでTopicを特定し、ROS 2 `PointCloud2`候補であることを確認します。
+`render`は選択したframeをinline previewし、`extract`は同じframeをPCDの
+investigation artifactとして保存します。recording-relativeなlog timeで選ぶ場合は
+`--frame 0`の代わりに`--at 0ns`を使います。
+
+![Topic discovery、Unicode rendering、ASCII PCD extractionを示すpcx Quick Start demo](./demo/quickstart.gif)
+
+録画は[`demo/quickstart.tape`](./demo/quickstart.tape)から生成されます。再生成手順は
+[`demo/README.md`](./demo/README.md)を参照してください。
+
+## Command例
+
+現在の5つのsubcommandで、MCAP inspection、Point Frame selection、terminal preview、
+PCD extraction、faithful encoded passthroughを扱います。
 
 ```bash
 pcx info run.mcap
@@ -103,6 +131,10 @@ protocolをautomaticには許可しません。interactiveなbackendを固定す
 `kitty`、`sixel`を使います。graphics／ANSIを使うbackendをredirected stdoutへ
 明示指定した場合は、escape sequenceを書き込む前に拒否します。`NO_COLOR`は
 Unicode出力のANSI colorを無効にします。
+
+全optionは`pcx <COMMAND> --help`で確認できます。stream behavior、limit、backend
+selection、exit statusの詳細は
+[command guide](https://takeshid.github.io/pcx/ja/commands/)を参照してください。
 
 transferは既存のshell toolに委ねます。
 

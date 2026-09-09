@@ -37,19 +37,20 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 
 ## Install
 
-Until the first crates.io release, build from source:
+Install the published command from crates.io:
+
+```bash
+cargo install pcx-cli --locked
+pcx --version
+```
+
+To build the current checkout instead:
 
 ```bash
 git clone https://github.com/takeshiD/pcx.git
 cd pcx
 cargo install --path . --locked
 pcx --version
-```
-
-The planned registry command is:
-
-```bash
-cargo install pcx-cli --locked
 ```
 
 With Nix:
@@ -64,9 +65,36 @@ completions plus manual pages. See the
 [installation guide](https://takeshid.github.io/pcx/installation/) for their
 locations and regeneration workflow.
 
-## v0.1 workflow
+## Quick start
 
-MCAP metadata inspection, Topic discovery, and one-frame extraction are available now.
+The repository includes a small, valid ROS 2 `PointCloud2` MCAP fixture, so the
+complete inspect-to-extract path can be tried without finding sample data first:
+
+```bash
+git clone https://github.com/takeshiD/pcx.git
+cd pcx
+
+pcx topics tests/fixtures/valid/pointcloud2.mcap
+pcx render tests/fixtures/valid/pointcloud2.mcap \
+  --topic /lidar/points --frame 0 --width 32 --height 12
+pcx extract tests/fixtures/valid/pointcloud2.mcap \
+  --topic /lidar/points --frame 0 --encoding ascii -o /tmp/frame.pcd
+```
+
+The first command identifies the Topic and confirms that its declaration is a
+ROS 2 `PointCloud2` candidate. `render` previews the selected frame inline;
+`extract` writes the same frame as a PCD investigation artifact. Use `--at 0ns`
+instead of `--frame 0` to select by recording-relative log time.
+
+![pcx quick-start demo showing Topic discovery, Unicode rendering, and ASCII PCD extraction](./demo/quickstart.gif)
+
+The recording is generated from [`demo/quickstart.tape`](./demo/quickstart.tape);
+see [`demo/README.md`](./demo/README.md) for the reproducible build command.
+
+## Command examples
+
+The five current subcommands cover MCAP inspection, Point Frame selection,
+terminal preview, PCD extraction, and faithful encoded passthrough:
 
 ```bash
 pcx info run.mcap
@@ -104,6 +132,10 @@ auto-authorize a graphics protocol. Use `--backend unicode`, `kitty`, or
 choice explicit. Explicit graphics and ANSI-capable backends are rejected when
 stdout is redirected, before an escape sequence is written. `NO_COLOR`
 disables ANSI color in Unicode output.
+
+Run `pcx <COMMAND> --help` for every option, or use the
+[command guide](https://takeshid.github.io/pcx/commands/) for stream behavior,
+limits, backend selection, and exit-status details.
 
 Transfer remains the shell's job:
 

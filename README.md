@@ -4,7 +4,7 @@
 
 `pcx` is a shell-native toolbox for inspecting and reducing point-cloud recordings on edge Linux systems.
 
-> **Project status:** active development. The executable provides MCAP inspection, one-frame PCD extraction, faithful one-message MCAP passthrough, and terminal rendering of one Point Frame.
+> **Project status:** active development. The executable provides MCAP inspection, one-frame PCD extraction, faithful one-message MCAP passthrough, and terminal rendering of MCAP Point Frames and PCD Static Clouds.
 
 ## Why pcx?
 
@@ -25,7 +25,7 @@ The product aims to remain a single executable with bounded memory, binary-safe 
 | MCAP Topic listing with human and JSON output      | Available             |
 | ROS 2 `PointCloud2` frame extraction               | Available             |
 | Binary and ASCII PCD output                        | Available             |
-| Strict PCD reader (CLI integration later)          | Available internally  |
+| Strict PCD reader and Static Cloud rendering       | Available             |
 | Encoded one-message MCAP passthrough               | Available             |
 | Bounded synchronous LAS/LAZ library I/O            | Available             |
 | Crop, field selection, frame-local voxel reduction | Planned               |
@@ -79,12 +79,16 @@ pcx render tests/fixtures/valid/pointcloud2.mcap \
   --topic /lidar/points --frame 0 --width 32 --height 12
 pcx extract tests/fixtures/valid/pointcloud2.mcap \
   --topic /lidar/points --frame 0 --encoding ascii -o /tmp/frame.pcd
+pcx render tests/fixtures/valid/pointcloud2-ascii.pcd \
+  --width 32 --height 12
 ```
 
 The first command identifies the Topic and confirms that its declaration is a
 ROS 2 `PointCloud2` candidate. `render` previews the selected frame inline;
 `extract` writes the same frame as a PCD investigation artifact. Use `--at 0ns`
 instead of `--frame 0` to select by recording-relative log time.
+The final command reads a PCD Static Cloud directly; static Sources do not use
+Topic or Point Frame selectors.
 
 ![pcx quick-start demo showing Topic discovery, Unicode rendering, and ASCII PCD extraction](./demo/quickstart.gif)
 
@@ -111,6 +115,7 @@ pcx passthrough run.mcap \
 pcx render run.mcap \
   --topic /lidar/points \
   --frame 0
+pcx render cloud.pcd
 ```
 
 Choose exactly one of `--frame INDEX` and `--at DURATION`. Binary PCD is the
@@ -123,9 +128,10 @@ plus recording-level attachments, metadata, and application-private records.
 Derived container structure, statistics, and CRCs are regenerated
 deterministically; attachment and metadata indexes are omitted to bound memory.
 
-`pcx render` decodes and projects exactly one selected Point Frame, then writes
-one inline image to stdout. `--backend auto` is the default: redirected stdout
-uses deterministic control-free Unicode text, while an interactive terminal
+`pcx render` decodes and projects exactly one selected MCAP Point Frame or one
+PCD Static Cloud, then writes one inline image to stdout. MCAP requires
+`--topic` and exactly one selector; PCD accepts neither. `--backend auto` is the
+default: redirected stdout uses deterministic control-free Unicode text, while an interactive terminal
 falls back conservatively to Unicode; the current process query does not
 auto-authorize a graphics protocol. Use `--backend unicode`, `kitty`, or
 `sixel` to make an interactive

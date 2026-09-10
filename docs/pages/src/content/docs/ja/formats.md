@@ -9,10 +9,10 @@ description: 採用するフォーマット境界と忠実性の規則。
 | --- | --- | --- | --- |
 | MCAP コンテナ | metadataとencoded record | 1 message container passthrough | 利用可能 |
 | ROS 2 `sensor_msgs/msg/PointCloud2` | 厳密な CDR デコード | なし | 利用可能 |
-| PCD | ASCII と little-endian binary | binary / ASCII | reader adapter は利用可能、input CLI command は未実装 |
+| PCD | ASCII と little-endian binary | binary / ASCII | Static Cloudとして`pcx render`から読取可能 |
 | PLY 1.0 | ASCII と両方の binary byte order の scalar vertex | ASCII と両方の binary byte order | adapter は利用可能、CLI command は未実装 |
 | LAS/LAZ | bounded synchronous batch | bounded synchronous batch | library adapterは利用可能、CLIは未公開 |
-| Terminal raster | 選択した1 MCAP Point Frame | Unicode／ANSI、Kitty、Sixel | `pcx render`で利用可能 |
+| Terminal raster | 選択した1 MCAP Point FrameまたはPCD Static Cloud | Unicode／ANSI、Kitty、Sixel | `pcx render`で利用可能 |
 
 LAS/LAZのCLI integrationは後続です。common CPU projection、conservativeなterminal
 capability selection、Unicode、Kitty、Sixel backendは`pcx render`から利用できます。
@@ -20,8 +20,10 @@ AWS/S3転送やcloud credentialは製品機能に含めません。
 
 ## Terminal rendering
 
-`pcx render`はMCAPからROS 2 `PointCloud2` Point Frameを1件選び、boundedかつ
-terminal-neutralなrasterへprojectionします。projectionはsynchronous、orthographic、
+`pcx render`はMCAPからROS 2 `PointCloud2` Point Frameを1件選ぶか、PCD Static
+Cloudを1件読み取り、boundedかつterminal-neutralなrasterへprojectionします。
+MCAPではTopic／Point Frame selectorが必須で、PCDでは拒否します。projectionは
+synchronous、orthographic、
 axis-alignedで、要求したrasterへfitするframe-localな処理です。Source Point Frameを
 変更したり置き換えたりしません。
 

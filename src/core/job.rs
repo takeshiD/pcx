@@ -108,9 +108,14 @@ enum Operation {
         destination: Destination,
     },
     Render {
-        topic: String,
-        selector: FrameSelector,
+        selection: Option<RenderSelection>,
     },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RenderSelection {
+    topic: String,
+    selector: FrameSelector,
 }
 
 /// A validated, format-independent description of requested behavior.
@@ -188,8 +193,18 @@ impl JobSpec {
         }
         Ok(Self {
             source,
-            operation: Operation::Render { topic, selector },
+            operation: Operation::Render {
+                selection: Some(RenderSelection { topic, selector }),
+            },
         })
+    }
+
+    /// Describe rendering one Static Cloud to standard output.
+    pub fn render_static(source: SourceSpec) -> Self {
+        Self {
+            source,
+            operation: Operation::Render { selection: None },
+        }
     }
 
     pub const fn kind(&self) -> JobKind {
@@ -236,11 +251,14 @@ impl JobSpec {
 
     pub fn render_selection(&self) -> Option<(&str, FrameSelector)> {
         match &self.operation {
-            Operation::Render { topic, selector } => Some((topic, *selector)),
+            Operation::Render {
+                selection: Some(selection),
+            } => Some((&selection.topic, selection.selector)),
             Operation::Info
             | Operation::Topics
             | Operation::Extract { .. }
-            | Operation::Passthrough { .. } => None,
+            | Operation::Passthrough { .. }
+            | Operation::Render { selection: None } => None,
         }
     }
 }
@@ -301,6 +319,11 @@ mod tests {
             render.render_selection(),
             Some(("/lidar/points", FrameSelector::Index(0)))
         );
+
+        let static_render =
+            JobSpec::render_static(SourceSpec::file("cloud.pcd").expect("valid static Source"));
+        assert_eq!(static_render.kind(), JobKind::Render);
+        assert_eq!(static_render.render_selection(), None);
     }
 
     #[test]

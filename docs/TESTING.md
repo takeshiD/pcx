@@ -66,6 +66,11 @@ fixture.mcap
   -> expected schema + bit-level values
 ```
 
+Static-format CLI coverage also renders the reviewed ASCII and little-endian
+binary PCD fixtures through `pcx render`, compares their deterministic non-TTY
+output, and verifies that unsupported encodings and insufficient memory fail
+before rendered bytes are written.
+
 ## Fixtures
 
 Fixtures remain under 1 MiB and need no Git LFS.

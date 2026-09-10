@@ -17,6 +17,9 @@ pcx passthrough INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
 pcx render INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
   [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
   [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
+pcx render INPUT.pcd \
+  [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
+  [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
 ```
 
 `pcx info`はPoint FrameをdecodeせずにMCAP Sourceをstreamingで調査します。human outputとversion付きJSONはstdoutへ出力され、成功時のstderrは空です。
@@ -48,11 +51,15 @@ defaultで、`none`とdeterministic LZ4も選択できます。
 pcx render INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
   [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
   [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
+pcx render INPUT.pcd \
+  [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
+  [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
 ```
 
-`pcx render`は`extract`と同じTopic／Point Frame selectorを使います。1件のROS 2
-`PointCloud2`をstrictにdecodeし、bounded rasterへdeterministicかつframe-localな
-CPU projectionを行い、1枚のinline renderingをstdoutへstreamingします。
+MCAPでは`pcx render`は`extract`と同じTopic／Point Frame selectorを使います。
+PCDでは1件のStatic Cloudを読み取り、`--topic`、`--frame`、`--at`を拒否します。
+選択したSourceをstrictにdecodeし、bounded rasterへdeterministicなCPU projectionを
+行い、1枚のinline renderingをstdoutへstreamingします。
 full-screen viewerやevent loopではないone-shot commandです。
 
 default backendは`auto`です。redirected stdoutにはqueryを行わず、terminal control
@@ -72,8 +79,9 @@ size、encoder state、projection storageはbackendに応じて出力前に検�
 rasterのdefaultは80×48 pixelで、Unicodeでは80 column×24 rowです。Sixel用の
 `--palette-limit`はdefault 256 colors、Kitty／Sixel用の`--payload-limit`はdefault
 64 MiBです。両graphics backendには固定の4096×4096 ceilingがあります。
-`--memory-limit`はdefault 512 MiBで、managed Source、projection、raster、encoder
-memoryをboundします。
+`--memory-limit`はdefault 512 MiBで、managed Source decode、projection、raster、
+encoder memoryをboundします。PCDはcase-insensitiveな`.pcd` filename extensionで
+判定し、その他のpathは従来どおりMCAPとして扱います。
 
 human-readableな診断はstderr、成功した`--json`のデータと`pcx render`の1 frameは
 stdoutに出力します。`render`のautomaticなredirected outputにはterminal control

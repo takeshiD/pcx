@@ -44,6 +44,16 @@ Use `--backend unicode` for an explicit interactive text-cell rendering. When
 stdout is redirected, automatic output is deterministic monochrome Unicode
 without ANSI or graphics-protocol escape sequences.
 
+## Render a PCD Static Cloud
+
+```bash
+pcx render tests/fixtures/valid/pointcloud2-ascii.pcd --width 32 --height 12
+```
+
+PCD Static Clouds do not use `--topic`, `--frame`, or `--at`. The reader accepts
+the supported ASCII and little-endian binary PCD subset and applies the same
+bounded projection and terminal output policy as MCAP rendering.
+
 Transfer output with the shell rather than a cloud client:
 
 ```bash

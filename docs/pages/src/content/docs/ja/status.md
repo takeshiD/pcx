@@ -23,10 +23,11 @@ description: 現在利用できる機能と今後の順序。
 
 - **Reduction:** field選択、crop、stats、frame単位voxel。
 - **利用可能なFormat追加:** faithfulな1 message encoded MCAP passthrough。
-- **利用可能なFormat追加:** strict ASCII／little-endian binary PCD reader adapter。
+- **利用可能なFormat追加:** Static Cloud renderingから利用できるstrict ASCII／
+  little-endian binary PCD reader adapter。
 - **利用可能なTerminal追加:** bounded CPU projectionとUnicode／ANSI、Kitty、Sixel
-  出力を持つ1 Point Frameの`pcx render` command。
-- **Formats:** PCD input CLI integration、PLY CLI integration、LAS/LAZ CLI integration。
+  出力を持つMCAP Point Frame／PCD Static Cloud対応の`pcx render` command。
+- **Formats:** PLY CLI integration、LAS/LAZ CLI integration。
 
 scalar-vertex PLY reader/writer adapter は共通 schema の背後に実装済みですが、
 user-facing command はまだ公開していません。

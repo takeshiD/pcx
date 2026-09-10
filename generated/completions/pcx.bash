@@ -269,7 +269,7 @@ _pcx() {
             return 0
             ;;
         pcx__render)
-            opts="-h --topic --frame --at --backend --width --height --palette-limit --payload-limit --memory-limit --help <INPUT.mcap>"
+            opts="-h --topic --frame --at --backend --width --height --palette-limit --payload-limit --memory-limit --help <INPUT>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

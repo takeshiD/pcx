@@ -40,11 +40,12 @@ covered by committed end-to-end fixtures.
 ### 2.2 Later phases
 
 Field selection, crop, statistics, frame-local voxel reduction, and bounded
-LAS/LAZ library I/O are available after v0.1. The strict PCD reader, faithful
-PLY adapter, and one-message MCAP container passthrough are also available;
-their remaining CLI integrations may follow later. The CPU rasterizer,
-capability selection, and Unicode backend are implemented; Kitty and Sixel
-remain follow-up work.
+LAS/LAZ library I/O are available after v0.1. The strict PCD reader is exposed
+for Static Cloud terminal rendering. The faithful PLY adapter and one-message
+MCAP container passthrough are also available; remaining format CLI integrations
+may follow later. The CPU rasterizer,
+capability selection, and Unicode, Kitty, and Sixel backends are implemented
+through the one-shot render command.
 
 ### 2.3 Explicit non-goals
 
@@ -197,6 +198,10 @@ is rejected with source context. A ROS installation is not required.
 The writer supports binary and ASCII modes. Header fields derive from the
 validated schema. A representation that would lose information fails unless a
 future command exposes an explicit lossy policy.
+
+The reader supports strict ASCII and little-endian binary PCD with the default
+viewpoint. `pcx render INPUT.pcd` decodes one Static Cloud into a bounded
+`PointBatch` and uses the common CPU projection and terminal encoder path.
 
 ### PLY
 

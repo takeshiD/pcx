@@ -97,6 +97,13 @@ The frame-to-PCD path uses the semantic pipeline. `pcx passthrough` uses the
 container pipeline to copy one Topic-selected encoded message without point
 decoding.
 
+Terminal rendering enters the same semantic pipeline as either an MCAP-backed
+`PointView` or a PCD-backed `PointBatch`. A PCD Source is one Static Cloud and
+therefore has no Topic or Point Frame selector. The CLI only routes by Source
+kind; PCD parsing, validation, and allocation planning remain inside the deep
+PCD adapter. Future static-format adapters can supply bounded `PointBatch`
+values to the same projection interface.
+
 ### MCAP passthrough preservation
 
 - The selected Message retains its payload bytes, Channel ID, sequence, log

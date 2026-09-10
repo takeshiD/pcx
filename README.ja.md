@@ -4,7 +4,7 @@
 
 `pcx`は、edge Linux上にある点群recordingをshellから調査・縮小するためのtoolboxです。
 
-> **開発状況:** 開発中です。実行ファイルはMCAP調査、1 frameのPCD抽出、1 messageのfaithfulなMCAP passthrough、1 Point Frameのterminal renderingを提供します。
+> **開発状況:** 開発中です。実行ファイルはMCAP調査、1 frameのPCD抽出、1 messageのfaithfulなMCAP passthrough、MCAP Point Frame／PCD Static Cloudのterminal renderingを提供します。
 
 ## なぜpcxか
 
@@ -25,7 +25,7 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 | human／JSON出力によるMCAP Topic一覧 | 利用可能 |
 | ROS 2 `PointCloud2` frame抽出 | 利用可能 |
 | binary／ASCII PCD出力 | 利用可能 |
-| strict PCD reader（CLI integration は今後） | 内部で利用可能 |
+| strict PCD reader／Static Cloud rendering | 利用可能 |
 | encoded 1 message MCAP passthrough | 利用可能 |
 | bounded synchronous LAS/LAZ library I/O | 利用可能 |
 | crop、field選択、frame単位voxel | 計画中 |
@@ -78,12 +78,16 @@ pcx render tests/fixtures/valid/pointcloud2.mcap \
   --topic /lidar/points --frame 0 --width 32 --height 12
 pcx extract tests/fixtures/valid/pointcloud2.mcap \
   --topic /lidar/points --frame 0 --encoding ascii -o /tmp/frame.pcd
+pcx render tests/fixtures/valid/pointcloud2-ascii.pcd \
+  --width 32 --height 12
 ```
 
 最初のcommandでTopicを特定し、ROS 2 `PointCloud2`候補であることを確認します。
 `render`は選択したframeをinline previewし、`extract`は同じframeをPCDの
 investigation artifactとして保存します。recording-relativeなlog timeで選ぶ場合は
 `--frame 0`の代わりに`--at 0ns`を使います。
+最後のcommandはPCD Static Cloudを直接読み取ります。static SourceにはTopicや
+Point Frame selectorを指定しません。
 
 ![Topic discovery、Unicode rendering、ASCII PCD extractionを示すpcx Quick Start demo](./demo/quickstart.gif)
 
@@ -110,6 +114,7 @@ pcx passthrough run.mcap \
 pcx render run.mcap \
   --topic /lidar/points \
   --frame 0
+pcx render cloud.pcd
 ```
 
 `--frame INDEX`と`--at DURATION`のどちらか一方を指定します。binary PCDが
@@ -123,8 +128,10 @@ metadata、application-private recordを保持します。派生container構造�
 CRCはdeterministicに再生成し、memoryをboundするためattachment／metadata indexは
 省略します。
 
-`pcx render`は選択した1 Point Frameをdecode／projectionし、inline imageを1枚
-stdoutへ出力します。defaultの`--backend auto`では、redirectされたstdoutには
+`pcx render`は選択した1 MCAP Point Frameまたは1 PCD Static Cloudを
+decode／projectionし、inline imageを1枚stdoutへ出力します。MCAPでは`--topic`と
+selectorのどちらか一方が必須で、PCDではどちらも指定しません。defaultの
+`--backend auto`では、redirectされたstdoutには
 control sequenceを含まないdeterministicなUnicode textを出力します。interactive
 terminalではconservativeにUnicodeへfallbackします。現在のprocess queryはgraphics
 protocolをautomaticには許可しません。interactiveなbackendを固定するには`--backend unicode`、

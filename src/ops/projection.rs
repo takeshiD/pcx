@@ -364,6 +364,35 @@ impl ProjectionPlan {
         )
     }
 
+    /// Combines an already materialized Static Cloud with operator and encoder bounds.
+    ///
+    /// The Source adapter supplies its conservative retained-memory bound so PCD
+    /// and future static-format adapters can share the projection path without
+    /// leaking format-specific accounting into this module.
+    pub fn memory_requirements_for_batch(
+        &self,
+        input: &PointBatch,
+        retained_input: ByteBound,
+        encoder_buffer: ByteBound,
+        output_buffer: ByteBound,
+        queued_output: ByteBound,
+    ) -> crate::core::Result<PipelineMemoryRequirements> {
+        self.validate_input(
+            input.schema(),
+            input.dimensions(),
+            PointRepresentation::Columns,
+        )
+        .map_err(|error| CoreError::new(ErrorCategory::Unsupported, error.to_string()))?;
+        Ok(PipelineMemoryRequirements::new(
+            retained_input,
+            ByteBound::bounded(self.pipeline.materialization_bytes()),
+            ByteBound::bounded(self.pipeline.peak_scratch_bytes()),
+            encoder_buffer,
+            output_buffer,
+            queued_output,
+        ))
+    }
+
     fn validate_input(
         &self,
         schema: &PointSchema,

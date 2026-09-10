@@ -18,7 +18,7 @@ hero:
 `pcx`は、robotから何GBものdataを移動する前にrecordingの内容を把握するためのtoolです。bounded managed memoryとbinary-safeなstdoutを持つ、同期的な単一実行ファイルとして設計されています。
 
 <ul class="status-list">
-  <li class="status-card" data-state="available"><strong>利用可能</strong><span>MCAP調査、1 frameのPCD抽出／terminal rendering、1 message MCAP passthrough。</span></li>
+  <li class="status-card" data-state="available"><strong>利用可能</strong><span>MCAP調査、1 frameのPCD抽出、MCAP／PCD terminal rendering、1 message MCAP passthrough。</span></li>
   <li class="status-card" data-state="planned"><strong>今後の予定</strong><span>reduction operatorと追加formatのCLI integration。</span></li>
   <li class="status-card" data-state="out"><strong>対象外</strong><span>AWS/S3 client、cloud credential、daemon、GUI、ROS runtime。</span></li>
 </ul>
@@ -34,6 +34,7 @@ pcx info run.mcap
 pcx topics run.mcap --json
 pcx extract run.mcap --topic /lidar/points --frame 0 -o frame.pcd
 pcx render run.mcap --topic /lidar/points --frame 0
+pcx render cloud.pcd
 ```
 
 文書では現在利用できるものと計画中のものを明示的に区別します。

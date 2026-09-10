@@ -30,7 +30,7 @@ complete -c pcx -n "__fish_pcx_needs_command" -f -a "info" -d 'Show MCAP contain
 complete -c pcx -n "__fish_pcx_needs_command" -f -a "topics" -d 'Discover Topics, MCAP Channels, Schemas, and message counts'
 complete -c pcx -n "__fish_pcx_needs_command" -f -a "extract" -d 'Extract exactly one ROS 2 PointCloud2 Point Frame as PCD'
 complete -c pcx -n "__fish_pcx_needs_command" -f -a "passthrough" -d 'Copy one selected encoded message into a faithful reduced MCAP'
-complete -c pcx -n "__fish_pcx_needs_command" -f -a "render" -d 'Render exactly one ROS 2 PointCloud2 Point Frame to stdout'
+complete -c pcx -n "__fish_pcx_needs_command" -f -a "render" -d 'Render one MCAP Point Frame or PCD Static Cloud to stdout'
 complete -c pcx -n "__fish_pcx_needs_command" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c pcx -n "__fish_pcx_using_subcommand info" -l json -d 'Print versioned JSON instead of human-readable text'
 complete -c pcx -n "__fish_pcx_using_subcommand info" -s h -l help -d 'Print help'
@@ -55,7 +55,7 @@ lz4\t''"
 complete -c pcx -n "__fish_pcx_using_subcommand passthrough" -l memory-limit -d 'Hard managed-memory limit in bytes' -r
 complete -c pcx -n "__fish_pcx_using_subcommand passthrough" -l force -d 'Replace an existing output file'
 complete -c pcx -n "__fish_pcx_using_subcommand passthrough" -s h -l help -d 'Print help'
-complete -c pcx -n "__fish_pcx_using_subcommand render" -l topic -d 'Topic whose messages are counted as Point Frames' -r
+complete -c pcx -n "__fish_pcx_using_subcommand render" -l topic -d 'MCAP Topic whose messages are counted as Point Frames' -r
 complete -c pcx -n "__fish_pcx_using_subcommand render" -l frame -d 'Zero-based Point Frame index after Topic selection' -r
 complete -c pcx -n "__fish_pcx_using_subcommand render" -l at -d 'First Point Frame at or after this duration from recording start' -r
 complete -c pcx -n "__fish_pcx_using_subcommand render" -l backend -d 'Terminal backend, selected conservatively by default' -r -f -a "auto\t''
@@ -72,5 +72,5 @@ complete -c pcx -n "__fish_pcx_using_subcommand help; and not __fish_seen_subcom
 complete -c pcx -n "__fish_pcx_using_subcommand help; and not __fish_seen_subcommand_from info topics extract passthrough render help" -f -a "topics" -d 'Discover Topics, MCAP Channels, Schemas, and message counts'
 complete -c pcx -n "__fish_pcx_using_subcommand help; and not __fish_seen_subcommand_from info topics extract passthrough render help" -f -a "extract" -d 'Extract exactly one ROS 2 PointCloud2 Point Frame as PCD'
 complete -c pcx -n "__fish_pcx_using_subcommand help; and not __fish_seen_subcommand_from info topics extract passthrough render help" -f -a "passthrough" -d 'Copy one selected encoded message into a faithful reduced MCAP'
-complete -c pcx -n "__fish_pcx_using_subcommand help; and not __fish_seen_subcommand_from info topics extract passthrough render help" -f -a "render" -d 'Render exactly one ROS 2 PointCloud2 Point Frame to stdout'
+complete -c pcx -n "__fish_pcx_using_subcommand help; and not __fish_seen_subcommand_from info topics extract passthrough render help" -f -a "render" -d 'Render one MCAP Point Frame or PCD Static Cloud to stdout'
 complete -c pcx -n "__fish_pcx_using_subcommand help; and not __fish_seen_subcommand_from info topics extract passthrough render help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'

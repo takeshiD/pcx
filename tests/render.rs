@@ -305,7 +305,7 @@ fn pcd_read_refusals_write_no_rendered_bytes() {
     let too_small = Command::new(env!("CARGO_BIN_EXE_pcx"))
         .arg("render")
         .arg(truncated)
-        .args(["--width", "8", "--height", "4", "--memory-limit", "100000"])
+        .args(["--width", "8", "--height", "4", "--memory-limit", "200000"])
         .output()
         .expect("pcx should start");
     assert_eq!(too_small.status.code(), Some(6));

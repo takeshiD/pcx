@@ -3,7 +3,10 @@
 use std::io::{self, Read, Seek, SeekFrom};
 
 const MCAP_MAGIC: &[u8; 8] = b"\x89MCAP0\r\n";
+/// Maximum bytes examined while looking for the first meaningful PCD directive.
 const MAX_PCD_SIGNATURE_BYTES: usize = 64 * 1024;
+const VERSION_KEYWORD: &[u8] = b"VERSION";
+const VERSION_VALUE: &[u8] = b"0.7";
 
 /// Format adapter selected from Source content, never from its filename.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -42,10 +45,12 @@ fn probe_kind_at_current_position(source: &mut impl Read) -> io::Result<SourceKi
     }
 
     let mut prefix = magic[..magic_len].iter().copied();
-    let mut line = [0_u8; MAX_PCD_SIGNATURE_BYTES];
-    let mut line_len = 0_usize;
+    let mut signature = PcdSignature::Leading;
     let mut consumed = 0_usize;
     loop {
+        if consumed == MAX_PCD_SIGNATURE_BYTES {
+            return Ok(SourceKind::Mcap);
+        }
         let byte = if let Some(byte) = prefix.next() {
             byte
         } else {
@@ -56,52 +61,93 @@ fn probe_kind_at_current_position(source: &mut impl Read) -> io::Result<SourceKi
             byte[0]
         };
         consumed += 1;
-        if consumed > MAX_PCD_SIGNATURE_BYTES {
-            return Ok(SourceKind::Mcap);
+        if let Some(is_pcd) = signature.feed(byte) {
+            return Ok(if is_pcd {
+                SourceKind::Pcd
+            } else {
+                SourceKind::Mcap
+            });
         }
-        if byte != b'\n' {
-            line[line_len] = byte;
-            line_len += 1;
-            continue;
-        }
-
-        let candidate = trim_ascii(&line[..line_len]);
-        line_len = 0;
-        if candidate.is_empty() || candidate.starts_with(b"#") {
-            continue;
-        }
-        return Ok(if is_pcd_signature(candidate) {
-            SourceKind::Pcd
-        } else {
-            SourceKind::Mcap
-        });
     }
 }
 
-fn is_pcd_signature(line: &[u8]) -> bool {
-    let mut tokens = line
-        .split(u8::is_ascii_whitespace)
-        .filter(|token| !token.is_empty());
-    tokens.next() == Some(b"VERSION".as_slice())
-        && tokens.next() == Some(b"0.7".as_slice())
-        && tokens.next().is_none()
+#[derive(Clone, Copy)]
+enum PcdSignature {
+    Leading,
+    Comment,
+    Keyword(usize),
+    Between,
+    Value(usize),
+    Trailing,
 }
 
-fn trim_ascii(mut bytes: &[u8]) -> &[u8] {
-    while bytes.first().is_some_and(u8::is_ascii_whitespace) {
-        bytes = &bytes[1..];
+impl PcdSignature {
+    /// Return `Some(true)` for PCD and `Some(false)` for a non-PCD first directive.
+    fn feed(&mut self, byte: u8) -> Option<bool> {
+        if byte == b'\n' {
+            return match *self {
+                Self::Leading | Self::Comment => {
+                    *self = Self::Leading;
+                    None
+                }
+                Self::Trailing => Some(true),
+                Self::Value(index) if index == VERSION_VALUE.len() => Some(true),
+                Self::Keyword(_) | Self::Between | Self::Value(_) => Some(false),
+            };
+        }
+        match *self {
+            Self::Leading if byte.is_ascii_whitespace() => None,
+            Self::Leading if byte == b'#' => {
+                *self = Self::Comment;
+                None
+            }
+            Self::Leading if byte == VERSION_KEYWORD[0] => {
+                *self = Self::Keyword(1);
+                None
+            }
+            Self::Leading => Some(false),
+            Self::Comment => None,
+            Self::Keyword(index) if index < VERSION_KEYWORD.len() => {
+                if byte != VERSION_KEYWORD[index] {
+                    return Some(false);
+                }
+                *self = Self::Keyword(index + 1);
+                None
+            }
+            Self::Keyword(_) if byte.is_ascii_whitespace() => {
+                *self = Self::Between;
+                None
+            }
+            Self::Keyword(_) => Some(false),
+            Self::Between if byte.is_ascii_whitespace() => None,
+            Self::Between if byte == VERSION_VALUE[0] => {
+                *self = Self::Value(1);
+                None
+            }
+            Self::Between => Some(false),
+            Self::Value(index) if index < VERSION_VALUE.len() => {
+                if byte != VERSION_VALUE[index] {
+                    return Some(false);
+                }
+                *self = Self::Value(index + 1);
+                None
+            }
+            Self::Value(_) if byte.is_ascii_whitespace() => {
+                *self = Self::Trailing;
+                None
+            }
+            Self::Value(_) => Some(false),
+            Self::Trailing if byte.is_ascii_whitespace() => None,
+            Self::Trailing => Some(false),
+        }
     }
-    while bytes.last().is_some_and(u8::is_ascii_whitespace) {
-        bytes = &bytes[..bytes.len() - 1];
-    }
-    bytes
 }
 
 #[cfg(test)]
 mod tests {
     use std::io::{Cursor, Seek};
 
-    use super::{SourceKind, probe_kind};
+    use super::{MAX_PCD_SIGNATURE_BYTES, SourceKind, probe_kind, probe_kind_at_current_position};
 
     #[test]
     fn content_wins_over_filename_independent_routing() {
@@ -117,5 +163,19 @@ mod tests {
             assert_eq!(probe_kind(&mut source).unwrap(), expected);
             assert_eq!(source.stream_position().unwrap(), 0);
         }
+    }
+
+    #[test]
+    fn unrecognized_signature_probe_reads_no_more_than_its_fixed_bound() {
+        let bytes = vec![b'#'; MAX_PCD_SIGNATURE_BYTES + 100];
+        let mut source = Cursor::new(bytes);
+        assert_eq!(
+            probe_kind_at_current_position(&mut source).unwrap(),
+            SourceKind::Mcap
+        );
+        assert_eq!(
+            source.stream_position().unwrap(),
+            u64::try_from(MAX_PCD_SIGNATURE_BYTES).unwrap()
+        );
     }
 }

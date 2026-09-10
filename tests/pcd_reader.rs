@@ -66,6 +66,21 @@ fn static_cloud_reader_exposes_metadata_without_reading_payload() {
 }
 
 #[test]
+fn tiny_memory_limit_refuses_before_header_read_or_buffer_allocation() {
+    let bytes_read = Rc::new(Cell::new(0));
+    let result = pcd::StaticCloudReader::new(
+        CountingReader {
+            cursor: Cursor::new(BINARY),
+            bytes_read: Rc::clone(&bytes_read),
+        },
+        1,
+    );
+
+    assert!(matches!(result, Err(ReadError::MemoryLimit { .. })));
+    assert_eq!(bytes_read.get(), 0);
+}
+
+#[test]
 fn reads_reviewed_ascii_and_binary_goldens_into_the_common_model() {
     for (bytes, exact_nan_bits) in [(BINARY, true), (ASCII, false)] {
         let decoded = read_bytes(bytes).unwrap();
@@ -257,17 +272,12 @@ fn every_golden_truncation_is_rejected_without_panicking() {
 
 #[test]
 fn memory_is_planned_and_refused_before_payload_consumption() {
-    let data_offset = BINARY
-        .windows(b"DATA binary\n".len())
-        .position(|window| window == b"DATA binary\n")
-        .unwrap()
-        + b"DATA binary\n".len();
     let mut input = Cursor::new(BINARY);
     assert!(matches!(
         pcd::read(&mut input, 1),
         Err(ReadError::MemoryLimit { .. })
     ));
-    assert_eq!(input.position(), u64::try_from(data_offset).unwrap());
+    assert_eq!(input.position(), 0);
 
     let admitted = read_bytes(BINARY).unwrap().plan().peak_managed_bytes();
     assert!(pcd::read(&mut Cursor::new(BINARY), admitted).is_ok());

@@ -110,7 +110,8 @@ Source kind is detected from bounded content signatures, with MCAP magic taking
 precedence and unknown content retaining the historical MCAP probe path.
 Filename extensions do not select an adapter; they are diagnostic hints only.
 The routing interface can add LAS/LAZ magic variants without changing render
-orchestration.
+orchestration. Signature probing uses constant-sized streaming state and reads
+at most 64 KiB.
 
 ### MCAP passthrough preservation
 
@@ -223,6 +224,10 @@ chunk table is bounded before output begins.
 - spool indexes.
 
 The Planner computes a conservative peak before execution. If the peak depends on an unbounded property of the input, the job is rejected or requires an explicit bounded alternative. Whole-process RSS, shared libraries, allocator metadata, page cache, and OS mappings are outside this contract and may be constrained with Linux cgroups.
+
+The PCD adapter admits its maximum 64 KiB header capacity and fixed overhead
+before allocating the header buffer or reading the Source. Its metadata-only
+plan is then combined with projection and encoder bounds before payload input.
 
 ## IO and failure semantics
 

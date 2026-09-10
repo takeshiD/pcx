@@ -16,6 +16,7 @@ The crates.io package is `pcx-cli`; its binary target is `pcx`. Product code is 
 src/
 ├── main.rs        process entrypoint only
 ├── lib.rs         internal library root
+├── source.rs      bounded content-signature routing to format adapters
 ├── cli/           argument grammar and presentation
 ├── core/          domain types, JobSpec, Planner, Executor
 ├── mcap/          MCAP container adapter
@@ -31,7 +32,8 @@ src/
 Allowed dependencies:
 
 ```text
-cli  -> core, mcap, ros2, pcd, ply, ops
+cli  -> core, source, mcap, ros2, pcd, ply, ops
+source -> standard library only
 mcap -> core
 ros2 -> core
 pcd  -> core
@@ -103,6 +105,12 @@ therefore has no Topic or Point Frame selector. The CLI only routes by Source
 kind; PCD parsing, validation, and allocation planning remain inside the deep
 PCD adapter. Future static-format adapters can supply bounded `PointBatch`
 values to the same projection interface.
+
+Source kind is detected from bounded content signatures, with MCAP magic taking
+precedence and unknown content retaining the historical MCAP probe path.
+Filename extensions do not select an adapter; they are diagnostic hints only.
+The routing interface can add LAS/LAZ magic variants without changing render
+orchestration.
 
 ### MCAP passthrough preservation
 

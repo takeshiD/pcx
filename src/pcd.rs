@@ -7,7 +7,7 @@
 
 mod reader;
 
-pub use reader::{ReadError, ReadPlan, ReadResult, read};
+pub use reader::{ReadError, ReadPlan, ReadResult, StaticCloudReader, read};
 
 use crate::core::point::{
     AccessError, PointBatch, PointColumn, PointDimensions, PointSchema, PointValue, PointView,

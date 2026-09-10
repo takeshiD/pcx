@@ -83,8 +83,9 @@ defaults to 80×48 pixels, which Unicode packs into 80 columns by 24 rows.
 `--palette-limit` defaults to 256 colors for Sixel; `--payload-limit` defaults
 to 64 MiB for Kitty and Sixel. Both graphics backends have a fixed 4096×4096
 ceiling. `--memory-limit` defaults to 512 MiB and bounds managed Source decode,
-projection, raster, and encoder memory. PCD format detection is the
-case-insensitive `.pcd` filename extension; other paths retain MCAP behavior.
+projection, raster, and encoder memory. Source format detection uses bounded
+content signatures rather than filename extensions, so renamed MCAP and PCD
+files retain their behavior.
 
 ## Streams and exit status
 

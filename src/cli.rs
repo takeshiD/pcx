@@ -31,6 +31,7 @@ use crate::{
     },
     pcd::{self, Encoding},
     ros2,
+    source::{self, SourceKind},
     terminal::{
         Backend, BackendChoice, CapabilityQuery, DEFAULT_SIXEL_LIMITS, DetectionContext,
         ProcessContext, QueryResult, SixelLimits, TerminalRenderError, TerminalRenderOptions,
@@ -472,33 +473,37 @@ impl CapabilityQuery for ConservativeCapabilityQuery {
     }
 }
 
-enum RenderPointData {
+enum PreparedRenderPointData {
     View(PointView),
-    Batch {
-        points: PointBatch,
-        retained_input: u64,
-    },
+    Pcd(pcd::StaticCloudReader<File>),
 }
 
-impl RenderPointData {
+impl PreparedRenderPointData {
+    fn pcd(file: File, memory_limit: u64) -> Result<Self, RunFailure> {
+        let read_limit = usize::try_from(memory_limit).unwrap_or(usize::MAX);
+        pcd::StaticCloudReader::new(file, read_limit)
+            .map(Self::Pcd)
+            .map_err(pcd_read_failure)
+    }
+
     fn schema(&self) -> &crate::core::point::PointSchema {
         match self {
             Self::View(view) => view.schema(),
-            Self::Batch { points, .. } => points.schema(),
+            Self::Pcd(reader) => reader.schema(),
         }
     }
 
     fn dimensions(&self) -> crate::core::point::PointDimensions {
         match self {
             Self::View(view) => view.layout().dimensions(),
-            Self::Batch { points, .. } => points.dimensions(),
+            Self::Pcd(reader) => reader.dimensions(),
         }
     }
 
     const fn representation(&self) -> PointRepresentation {
         match self {
             Self::View(_) => PointRepresentation::View,
-            Self::Batch { .. } => PointRepresentation::Columns,
+            Self::Pcd(_) => PointRepresentation::Columns,
         }
     }
 
@@ -516,37 +521,61 @@ impl RenderPointData {
                 output_buffer,
                 queued_output,
             ),
-            Self::Batch {
-                points,
-                retained_input,
-            } => plan.memory_requirements_for_batch(
-                points,
-                ByteBound::bounded(*retained_input),
-                encoder_buffer,
-                output_buffer,
-                queued_output,
-            ),
+            Self::Pcd(reader) => {
+                let retained_input =
+                    u64::try_from(reader.plan().peak_managed_bytes()).map_err(|_| {
+                        Error::new(
+                            ErrorCategory::Resource,
+                            "PCD retained-memory bound cannot be represented",
+                        )
+                    })?;
+                plan.memory_requirements_for_columns(
+                    ByteBound::bounded(retained_input),
+                    encoder_buffer,
+                    output_buffer,
+                    queued_output,
+                )
+            }
         }
     }
 
-    fn execute(&self, plan: &ProjectionPlan) -> Result<Raster, ProjectionError> {
+    fn read(self) -> Result<RenderPointData, RunFailure> {
         match self {
-            Self::View(view) => plan.execute_view(view),
-            Self::Batch { points, .. } => plan.execute_batch(points),
+            Self::View(view) => Ok(RenderPointData::View(view)),
+            Self::Pcd(reader) => reader
+                .read()
+                .map(|decoded| RenderPointData::Batch(decoded.into_points()))
+                .map_err(pcd_read_failure),
         }
     }
 }
 
-fn is_pcd_source(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("pcd"))
+enum RenderPointData {
+    View(PointView),
+    Batch(PointBatch),
+}
+
+impl RenderPointData {
+    fn execute(&self, plan: &ProjectionPlan) -> Result<Raster, ProjectionError> {
+        match self {
+            Self::View(view) => plan.execute_view(view),
+            Self::Batch(points) => plan.execute_batch(points),
+        }
+    }
 }
 
 fn open_render_source(path: &Path) -> Result<File, RunFailure> {
     File::open(path).map_err(|source| RunFailure {
         category: ErrorCategory::Io,
         message: format!("failed to open Source '{}': {source}", path.display()),
+        broken_pipe: false,
+    })
+}
+
+fn probe_render_source(source: &mut File) -> Result<SourceKind, RunFailure> {
+    source::probe_kind(source).map_err(|error| RunFailure {
+        category: ErrorCategory::Io,
+        message: format!("failed to probe Source kind: {error}"),
         broken_pipe: false,
     })
 }
@@ -577,75 +606,66 @@ where
     })?;
     check_render_cancelled(&handler.cancellation)?;
 
-    let (job, point_data) = if is_pcd_source(source_spec.path()) {
-        if args.topic.is_some() || args.frame.is_some() || args.at.is_some() {
-            return Err(RunFailure::core(Error::new(
-                ErrorCategory::Usage,
-                "PCD Static Cloud rendering does not accept --topic, --frame, or --at",
-            )));
-        }
-        let job = JobSpec::render_static(source_spec);
-        let mut file = open_render_source(job.source().path())?;
-        let read_limit = usize::try_from(args.memory_limit).unwrap_or(usize::MAX);
-        let decoded = pcd::read(&mut file, read_limit).map_err(pcd_read_failure)?;
-        let retained_input = u64::try_from(decoded.plan().peak_managed_bytes()).map_err(|_| {
-            RunFailure::core(Error::new(
-                ErrorCategory::Resource,
-                "PCD retained-memory bound cannot be represented",
-            ))
-        })?;
-        (
-            job,
-            RenderPointData::Batch {
-                points: decoded.into_points(),
-                retained_input,
-            },
-        )
-    } else {
-        let topic = args.topic.ok_or_else(|| {
-            RunFailure::core(Error::new(
-                ErrorCategory::Usage,
-                "MCAP Point Frame rendering requires --topic",
-            ))
-        })?;
-        let selector = match (args.frame, args.at) {
-            (Some(index), None) => FrameSelector::Index(index),
-            (None, Some(duration)) => FrameSelector::At(duration),
-            _ => {
+    let mut file = open_render_source(source_spec.path())?;
+    let source_kind = probe_render_source(&mut file)?;
+    let (job, prepared) = match source_kind {
+        SourceKind::Pcd => {
+            if args.topic.is_some() || args.frame.is_some() || args.at.is_some() {
                 return Err(RunFailure::core(Error::new(
                     ErrorCategory::Usage,
-                    "MCAP Point Frame rendering requires exactly one of --frame or --at",
+                    "PCD Static Cloud rendering does not accept --topic, --frame, or --at",
                 )));
             }
-        };
-        let job = JobSpec::render(source_spec, topic, selector).map_err(RunFailure::core)?;
-        let options = SourceOptions::default();
-        plan_selection_job(job.clone(), options, args.memory_limit)?;
-        let file = open_render_source(job.source().path())?;
-        let mut source = Source::new(file, options).map_err(probe_failure)?;
-        let (topic, selector) = job.render_selection().expect("temporal render selection");
-        let selected =
-            mcap::select_topic_message(&mut source, topic, selector).map_err(selection_failure)?;
-        drop(source);
-        if !selected.is_ros2_pointcloud2_candidate() {
-            return Err(RunFailure::core(Error::new(
-                ErrorCategory::Unsupported,
-                format!(
-                    "selected MCAP Channel {} is not declared as ROS 2 PointCloud2 with ros2msg/CDR encoding",
-                    selected.channel_id()
-                ),
-            )));
+            (
+                JobSpec::render_static(source_spec),
+                PreparedRenderPointData::pcd(file, args.memory_limit)?,
+            )
         }
-        let log_time = selected.log_time();
-        let publish_time = selected.publish_time();
-        let view = ros2::pointcloud2::decode(selected.into_data())
-            .map_err(|error| RunFailure {
-                category: ErrorCategory::InvalidData,
-                message: error.to_string(),
-                broken_pipe: false,
-            })?
-            .with_container_times(log_time, publish_time);
-        (job, RenderPointData::View(view))
+        SourceKind::Mcap => {
+            let topic = args.topic.ok_or_else(|| {
+                RunFailure::core(Error::new(
+                    ErrorCategory::Usage,
+                    "MCAP Point Frame rendering requires --topic",
+                ))
+            })?;
+            let selector = match (args.frame, args.at) {
+                (Some(index), None) => FrameSelector::Index(index),
+                (None, Some(duration)) => FrameSelector::At(duration),
+                _ => {
+                    return Err(RunFailure::core(Error::new(
+                        ErrorCategory::Usage,
+                        "MCAP Point Frame rendering requires exactly one of --frame or --at",
+                    )));
+                }
+            };
+            let job = JobSpec::render(source_spec, topic, selector).map_err(RunFailure::core)?;
+            let options = SourceOptions::default();
+            plan_selection_job(job.clone(), options, args.memory_limit)?;
+            let mut source = Source::new(file, options).map_err(probe_failure)?;
+            let (topic, selector) = job.render_selection().expect("temporal render selection");
+            let selected = mcap::select_topic_message(&mut source, topic, selector)
+                .map_err(selection_failure)?;
+            drop(source);
+            if !selected.is_ros2_pointcloud2_candidate() {
+                return Err(RunFailure::core(Error::new(
+                    ErrorCategory::Unsupported,
+                    format!(
+                        "selected MCAP Channel {} is not declared as ROS 2 PointCloud2 with ros2msg/CDR encoding",
+                        selected.channel_id()
+                    ),
+                )));
+            }
+            let log_time = selected.log_time();
+            let publish_time = selected.publish_time();
+            let view = ros2::pointcloud2::decode(selected.into_data())
+                .map_err(|error| RunFailure {
+                    category: ErrorCategory::InvalidData,
+                    message: error.to_string(),
+                    broken_pipe: false,
+                })?
+                .with_container_times(log_time, publish_time);
+            (job, PreparedRenderPointData::View(view))
+        }
     };
     check_render_cancelled(&handler.cancellation)?;
 
@@ -658,9 +678,9 @@ where
     );
     let projection_plan = projection
         .plan(
-            Arc::new(point_data.schema().clone()),
-            point_data.dimensions(),
-            point_data.representation(),
+            Arc::new(prepared.schema().clone()),
+            prepared.dimensions(),
+            prepared.representation(),
             &LossPolicy::lossless(),
         )
         .map_err(RunFailure::core)?;
@@ -682,7 +702,7 @@ where
         sixel_limits,
     );
     let encoder_buffer = render_options.encoder_memory_bound(selection);
-    let requirements = point_data
+    let requirements = prepared
         .memory_requirements(
             &projection_plan,
             encoder_buffer,
@@ -695,6 +715,8 @@ where
         .map_err(RunFailure::core)?;
     check_render_cancelled(&handler.cancellation)?;
 
+    let point_data = prepared.read()?;
+    check_render_cancelled(&handler.cancellation)?;
     let raster = point_data
         .execute(&projection_plan)
         .map_err(projection_failure)?;
@@ -1003,18 +1025,8 @@ fn pcd_failure(error: pcd::Error) -> RunFailure {
 }
 
 fn pcd_read_failure(error: pcd::ReadError) -> RunFailure {
-    let category = match &error {
-        pcd::ReadError::Io(_) => ErrorCategory::Io,
-        pcd::ReadError::UnsupportedEncoding(_)
-        | pcd::ReadError::UnsupportedViewpoint
-        | pcd::ReadError::UnsupportedField { .. } => ErrorCategory::Unsupported,
-        pcd::ReadError::MemoryLimit { .. }
-        | pcd::ReadError::ArithmeticOverflow { .. }
-        | pcd::ReadError::Allocation => ErrorCategory::Resource,
-        _ => ErrorCategory::InvalidData,
-    };
     RunFailure {
-        category,
+        category: error.category(),
         message: error.to_string(),
         broken_pipe: false,
     }

@@ -3,9 +3,13 @@
 use std::{
     collections::BTreeMap,
     ffi::OsString,
+    fs,
     path::{Path, PathBuf},
     process::{Command, Output},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -13,6 +17,32 @@ use pcx_cli::{
     cli::try_run_render_from_with,
     terminal::{CapabilityQuery, DetectionContext, QueryResult},
 };
+
+static NEXT_TEMP_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+struct TempDirectory(PathBuf);
+
+impl TempDirectory {
+    fn new() -> Self {
+        let id = NEXT_TEMP_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+        let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+            "pcx-render-source-kind-{}-{id}",
+            std::process::id()
+        ));
+        fs::create_dir(&path).expect("temporary directory should be created");
+        Self(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/valid/pointcloud2.mcap")
@@ -197,6 +227,39 @@ fn pcd_ascii_and_binary_render_the_same_static_cloud() {
 }
 
 #[test]
+fn source_content_wins_over_misleading_filename_extensions() {
+    let directory = TempDirectory::new();
+    let renamed_pcd = directory.path().join("cloud.mcap");
+    let renamed_mcap = directory.path().join("recording.pcd");
+    std::fs::copy(pcd_fixture(), &renamed_pcd).expect("PCD fixture should be copied");
+    std::fs::copy(fixture(), &renamed_mcap).expect("MCAP fixture should be copied");
+
+    let pcd = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(&renamed_pcd)
+        .args(["--width", "8", "--height", "4"])
+        .output()
+        .expect("pcx should start");
+    assert!(
+        pcd.status.success(),
+        "renamed PCD failed: {}",
+        String::from_utf8_lossy(&pcd.stderr)
+    );
+
+    let mcap = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(&renamed_mcap)
+        .args(["--topic", "/lidar/points", "--frame", "0"])
+        .output()
+        .expect("pcx should start");
+    assert!(
+        mcap.status.success(),
+        "renamed MCAP failed: {}",
+        String::from_utf8_lossy(&mcap.stderr)
+    );
+}
+
+#[test]
 fn source_specific_render_options_fail_before_output() {
     let pcd_with_selector = Command::new(env!("CARGO_BIN_EXE_pcx"))
         .arg("render")
@@ -231,17 +294,25 @@ fn pcd_read_refusals_write_no_rendered_bytes() {
     assert!(unsupported.stdout.is_empty());
     assert!(String::from_utf8_lossy(&unsupported.stderr).contains("binary_compressed"));
 
-    // The PCD adapter admits this small fixture, but the combined Source,
-    // projection, raster, and encoder plan does not fit this limit.
+    // The PCD header is valid but its payload is truncated. The combined plan
+    // must refuse before payload decoding can expose that later error.
+    let directory = TempDirectory::new();
+    let truncated = directory.path().join("truncated.pcd");
+    let mut bytes = fs::read(named_fixture("valid/pointcloud2-binary.pcd"))
+        .expect("binary PCD fixture should be read");
+    bytes.pop();
+    fs::write(&truncated, bytes).expect("truncated PCD should be written");
     let too_small = Command::new(env!("CARGO_BIN_EXE_pcx"))
         .arg("render")
-        .arg(pcd_fixture())
+        .arg(truncated)
         .args(["--width", "8", "--height", "4", "--memory-limit", "100000"])
         .output()
         .expect("pcx should start");
     assert_eq!(too_small.status.code(), Some(6));
     assert!(too_small.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&too_small.stderr).contains("managed-memory peak"));
+    let diagnostic = String::from_utf8_lossy(&too_small.stderr);
+    assert!(diagnostic.contains("managed-memory peak"));
+    assert!(!diagnostic.contains("truncated"));
 }
 
 #[test]

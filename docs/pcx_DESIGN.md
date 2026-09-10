@@ -200,8 +200,10 @@ validated schema. A representation that would lose information fails unless a
 future command exposes an explicit lossy policy.
 
 The reader supports strict ASCII and little-endian binary PCD with the default
-viewpoint. `pcx render INPUT.pcd` decodes one Static Cloud into a bounded
-`PointBatch` and uses the common CPU projection and terminal encoder path.
+viewpoint. Its preflight reader exposes schema, dimensions, and its managed
+memory peak from the header before consuming the payload. `pcx render INPUT.pcd`
+combines that bound with projection and encoder memory, then decodes the Static
+Cloud into a `PointBatch` only after admission.
 
 ### PLY
 

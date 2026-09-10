@@ -1,4 +1,9 @@
-use std::{io::Cursor, sync::Arc};
+use std::{
+    cell::Cell,
+    io::{self, Cursor, Read},
+    rc::Rc,
+    sync::Arc,
+};
 
 use pcx_cli::{
     core::point::{
@@ -15,6 +20,49 @@ const UNKNOWN_FIELDS: &[u8] =
 
 fn read_bytes(bytes: &[u8]) -> Result<pcd::ReadResult, ReadError> {
     pcd::read(&mut Cursor::new(bytes), usize::MAX)
+}
+
+struct CountingReader<'a> {
+    cursor: Cursor<&'a [u8]>,
+    bytes_read: Rc<Cell<usize>>,
+}
+
+impl Read for CountingReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let read = self.cursor.read(buffer)?;
+        self.bytes_read.set(self.bytes_read.get() + read);
+        Ok(read)
+    }
+}
+
+#[test]
+fn static_cloud_reader_exposes_metadata_without_reading_payload() {
+    let payload_offset = BINARY
+        .windows(b"DATA binary\n".len())
+        .position(|window| window == b"DATA binary\n")
+        .unwrap()
+        + b"DATA binary\n".len();
+    let bytes_read = Rc::new(Cell::new(0));
+    let reader = pcd::StaticCloudReader::new(
+        CountingReader {
+            cursor: Cursor::new(BINARY),
+            bytes_read: Rc::clone(&bytes_read),
+        },
+        usize::MAX,
+    )
+    .expect("header preflight should succeed");
+
+    assert_eq!(bytes_read.get(), payload_offset);
+    assert_eq!(reader.dimensions(), PointDimensions::new(2, 1).unwrap());
+    assert_eq!(reader.schema().fields().len(), 5);
+    assert_eq!(reader.plan().point_data_bytes(), 32);
+
+    let decoded = reader.read().expect("admitted payload should decode");
+    assert_eq!(bytes_read.get(), BINARY.len());
+    assert_eq!(
+        decoded.points().dimensions(),
+        PointDimensions::new(2, 1).unwrap()
+    );
 }
 
 #[test]

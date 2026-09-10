@@ -80,8 +80,8 @@ rasterのdefaultは80×48 pixelで、Unicodeでは80 column×24 rowです。Sixe
 `--palette-limit`はdefault 256 colors、Kitty／Sixel用の`--payload-limit`はdefault
 64 MiBです。両graphics backendには固定の4096×4096 ceilingがあります。
 `--memory-limit`はdefault 512 MiBで、managed Source decode、projection、raster、
-encoder memoryをboundします。PCDはcase-insensitiveな`.pcd` filename extensionで
-判定し、その他のpathは従来どおりMCAPとして扱います。
+encoder memoryをboundします。Source formatはfilename extensionではなくboundedな
+content signatureで判定するため、renameしたMCAP／PCDも元の挙動を維持します。
 
 human-readableな診断はstderr、成功した`--json`のデータと`pcx render`の1 frameは
 stdoutに出力します。`render`のautomaticなredirected outputにはterminal control

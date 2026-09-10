@@ -9,10 +9,10 @@ description: Accepted format boundaries and fidelity rules.
 | --- | --- | --- | --- |
 | MCAP container | Metadata and encoded records | One-message container passthrough | Available |
 | ROS 2 `sensor_msgs/msg/PointCloud2` | Strict CDR decoding | No | Available |
-| PCD | ASCII and little-endian binary | Binary and ASCII | Reader adapter available; no input CLI command yet |
+| PCD | ASCII and little-endian binary | Binary and ASCII | Readable as a Static Cloud through `pcx render` |
 | PLY 1.0 | Scalar vertices in ASCII and both binary byte orders | ASCII and both binary byte orders | Adapter available; no CLI command yet |
 | LAS/LAZ | Bounded synchronous batches | Bounded synchronous batches | Library adapter available; CLI not yet exposed |
-| Terminal raster | One selected MCAP Point Frame | Unicode/ANSI, Kitty, or Sixel | Available through `pcx render` |
+| Terminal raster | One selected MCAP Point Frame or PCD Static Cloud | Unicode/ANSI, Kitty, or Sixel | Available through `pcx render` |
 
 LAS/LAZ CLI integration remains later work. The CPU rasterizer, conservative
 capability selection, and Unicode, Kitty, and Sixel terminal backends are
@@ -21,8 +21,10 @@ product features.
 
 ## Terminal rendering
 
-`pcx render` selects one ROS 2 `PointCloud2` Point Frame from MCAP and projects
-it into a bounded terminal-neutral raster. Projection is synchronous,
+`pcx render` selects one ROS 2 `PointCloud2` Point Frame from MCAP or reads one
+PCD Static Cloud and projects it into a bounded terminal-neutral raster. MCAP
+requires Topic and Point Frame selectors; PCD rejects them. Projection is
+synchronous,
 orthographic, axis-aligned, fitted to the requested raster, and frame-local. It
 does not modify or replace the Source Point Frame.
 

@@ -72,52 +72,125 @@ impl ReadResult {
     }
 }
 
+/// A preflighted PCD Static Cloud positioned immediately before its payload.
+///
+/// Construction reads and validates only the bounded header, then exposes the
+/// schema, dimensions, and conservative adapter memory plan. Callers can
+/// combine those facts with downstream operator and encoder requirements
+/// before [`Self::read`] allocates point columns or consumes payload bytes.
+pub struct StaticCloudReader<R> {
+    input: R,
+    plan: ReadPlan,
+    schema: Arc<PointSchema>,
+    primitives: Box<[PrimitiveType]>,
+    counts: Box<[usize]>,
+    dimensions: PointDimensions,
+    points: usize,
+    encoding: PayloadEncoding,
+}
+
+impl<R: io::Read> StaticCloudReader<R> {
+    /// Validate a PCD header and prepare metadata-only preflight information.
+    pub fn new(mut input: R, memory_limit_bytes: usize) -> Result<StaticCloudReader<R>, ReadError> {
+        let header_subtotal = FIXED_MANAGED_OVERHEAD.checked_add(MAX_HEADER_BYTES).ok_or(
+            ReadError::ArithmeticOverflow {
+                context: "PCD header preflight",
+            },
+        )?;
+        let minimum_preflight_bytes = header_subtotal
+            .checked_add(header_subtotal / PROPORTIONAL_OVERHEAD_DIVISOR)
+            .ok_or(ReadError::ArithmeticOverflow {
+                context: "PCD header preflight",
+            })?;
+        if memory_limit_bytes < minimum_preflight_bytes {
+            return Err(ReadError::MemoryLimit {
+                required: minimum_preflight_bytes,
+                available: memory_limit_bytes,
+            });
+        }
+        let mut header_storage = Vec::new();
+        header_storage
+            .try_reserve_exact(MAX_HEADER_BYTES)
+            .map_err(|_| ReadError::Allocation)?;
+        header_storage.resize(MAX_HEADER_BYTES, 0);
+        let header_len = read_header(&mut input, &mut header_storage)?;
+        let header_text = std::str::from_utf8(&header_storage[..header_len])
+            .map_err(|_| ReadError::Header("header is not ASCII/UTF-8".into()))?;
+        if !header_text.is_ascii() {
+            return Err(ReadError::Header("header contains non-ASCII bytes".into()));
+        }
+        let parsed = ParsedHeader::parse(header_text)?;
+        let plan = parsed.plan(header_len, memory_limit_bytes)?;
+        let built = parsed.build_schema()?;
+        let dimensions =
+            PointDimensions::new(parsed.width, parsed.height).map_err(ReadError::Dimensions)?;
+        Ok(Self {
+            input,
+            plan,
+            schema: built.schema,
+            primitives: built.primitives.into_boxed_slice(),
+            counts: built.counts.into_boxed_slice(),
+            dimensions,
+            points: parsed.points,
+            encoding: parsed.encoding,
+        })
+    }
+
+    pub const fn plan(&self) -> ReadPlan {
+        self.plan
+    }
+
+    pub fn schema(&self) -> &PointSchema {
+        &self.schema
+    }
+
+    pub const fn dimensions(&self) -> PointDimensions {
+        self.dimensions
+    }
+
+    /// Allocate and decode the payload after the caller admits the full job.
+    pub fn read(mut self) -> Result<ReadResult, ReadError> {
+        let mut columns = allocate_columns(&self.primitives, &self.counts, self.points)?;
+        match self.encoding {
+            PayloadEncoding::Ascii => read_ascii_payload(
+                &mut self.input,
+                &self.primitives,
+                &self.counts,
+                &mut columns,
+                self.points,
+            )?,
+            PayloadEncoding::Binary => read_binary_payload(
+                &mut self.input,
+                &self.primitives,
+                &self.counts,
+                &mut columns,
+                self.points,
+            )?,
+        }
+
+        let metadata = Arc::new(PointFrameMetadata::new(
+            Timestamp::new(0, 0).map_err(ReadError::Metadata)?,
+            "",
+            false,
+        ));
+        let points = PointBatch::new(self.schema, metadata, self.dimensions, columns)
+            .map_err(ReadError::Batch)?;
+        Ok(ReadResult {
+            points,
+            plan: self.plan,
+        })
+    }
+}
+
 /// Read exactly one supported PCD file from a synchronous byte source.
 ///
-/// The header is bounded by 64 KiB and held on the stack. The declared schema,
-/// dimensions, and payload size are validated with checked arithmetic before
-/// any point columns are allocated. PCD carries neither a timestamp nor a frame
-/// identifier, so the common metadata uses zero/empty sentinel values.
+/// The header buffer is bounded by 64 KiB and admitted against the memory limit
+/// before allocation or input. The declared schema, dimensions, and payload
+/// size are then validated with checked arithmetic before any point columns are
+/// allocated. PCD carries neither a timestamp nor a frame identifier, so the
+/// common metadata uses zero/empty sentinel values.
 pub fn read(input: &mut impl io::Read, memory_limit_bytes: usize) -> Result<ReadResult, ReadError> {
-    let mut header_storage = [0_u8; MAX_HEADER_BYTES];
-    let header_len = read_header(input, &mut header_storage)?;
-    let header_text = std::str::from_utf8(&header_storage[..header_len])
-        .map_err(|_| ReadError::Header("header is not ASCII/UTF-8".into()))?;
-    if !header_text.is_ascii() {
-        return Err(ReadError::Header("header contains non-ASCII bytes".into()));
-    }
-    let parsed = ParsedHeader::parse(header_text)?;
-    let plan = parsed.plan(header_len, memory_limit_bytes)?;
-    let built = parsed.build_schema()?;
-    let dimensions =
-        PointDimensions::new(parsed.width, parsed.height).map_err(ReadError::Dimensions)?;
-    let mut columns = allocate_columns(&built.primitives, &built.counts, parsed.points)?;
-
-    match parsed.encoding {
-        PayloadEncoding::Ascii => read_ascii_payload(
-            input,
-            &built.primitives,
-            &built.counts,
-            &mut columns,
-            parsed.points,
-        )?,
-        PayloadEncoding::Binary => read_binary_payload(
-            input,
-            &built.primitives,
-            &built.counts,
-            &mut columns,
-            parsed.points,
-        )?,
-    }
-
-    let metadata = Arc::new(PointFrameMetadata::new(
-        Timestamp::new(0, 0).map_err(ReadError::Metadata)?,
-        "",
-        false,
-    ));
-    let points =
-        PointBatch::new(built.schema, metadata, dimensions, columns).map_err(ReadError::Batch)?;
-    Ok(ReadResult { points, plan })
+    StaticCloudReader::new(input, memory_limit_bytes)?.read()
 }
 
 fn read_header(input: &mut impl io::Read, storage: &mut [u8]) -> Result<usize, ReadError> {
@@ -296,7 +369,7 @@ impl<'a> ParsedHeader<'a> {
             .ok_or(ReadError::ArithmeticOverflow {
                 context: "field table size",
             })?;
-        let subtotal = header_bytes
+        let subtotal = MAX_HEADER_BYTES
             .checked_add(point_data_bytes)
             .and_then(|value| value.checked_add(field_tables))
             .and_then(|value| value.checked_add(FIXED_MANAGED_OVERHEAD))
@@ -756,6 +829,22 @@ pub enum ReadError {
     },
     TrailingPayload(String),
     Batch(BatchError),
+}
+
+impl ReadError {
+    /// Stable failure category used by format-agnostic CLI orchestration.
+    pub const fn category(&self) -> crate::core::ErrorCategory {
+        match self {
+            Self::Io(_) => crate::core::ErrorCategory::Io,
+            Self::UnsupportedEncoding(_)
+            | Self::UnsupportedViewpoint
+            | Self::UnsupportedField { .. } => crate::core::ErrorCategory::Unsupported,
+            Self::MemoryLimit { .. } | Self::ArithmeticOverflow { .. } | Self::Allocation => {
+                crate::core::ErrorCategory::Resource
+            }
+            _ => crate::core::ErrorCategory::InvalidData,
+        }
+    }
 }
 
 impl fmt::Display for ReadError {

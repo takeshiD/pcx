@@ -16,6 +16,7 @@ The crates.io package is `pcx-cli`; its binary target is `pcx`. Product code is 
 src/
 ├── main.rs        process entrypoint only
 ├── lib.rs         internal library root
+├── source.rs      bounded content-signature routing to format adapters
 ├── cli/           argument grammar and presentation
 ├── core/          domain types, JobSpec, Planner, Executor
 ├── mcap/          MCAP container adapter
@@ -31,7 +32,8 @@ src/
 Allowed dependencies:
 
 ```text
-cli  -> core, mcap, ros2, pcd, ply, ops
+cli  -> core, source, mcap, ros2, pcd, ply, ops
+source -> standard library only
 mcap -> core
 ros2 -> core
 pcd  -> core
@@ -96,6 +98,20 @@ MCAP -> ContainerRecord -> selection       MCAP -> ContainerRecord
 The frame-to-PCD path uses the semantic pipeline. `pcx passthrough` uses the
 container pipeline to copy one Topic-selected encoded message without point
 decoding.
+
+Terminal rendering enters the same semantic pipeline as either an MCAP-backed
+`PointView` or a PCD-backed `PointBatch`. A PCD Source is one Static Cloud and
+therefore has no Topic or Point Frame selector. The CLI only routes by Source
+kind; PCD parsing, validation, and allocation planning remain inside the deep
+PCD adapter. Future static-format adapters can supply bounded `PointBatch`
+values to the same projection interface.
+
+Source kind is detected from bounded content signatures, with MCAP magic taking
+precedence and unknown content retaining the historical MCAP probe path.
+Filename extensions do not select an adapter; they are diagnostic hints only.
+The routing interface can add LAS/LAZ magic variants without changing render
+orchestration. Signature probing uses constant-sized streaming state and reads
+at most 64 KiB.
 
 ### MCAP passthrough preservation
 
@@ -208,6 +224,10 @@ chunk table is bounded before output begins.
 - spool indexes.
 
 The Planner computes a conservative peak before execution. If the peak depends on an unbounded property of the input, the job is rejected or requires an explicit bounded alternative. Whole-process RSS, shared libraries, allocator metadata, page cache, and OS mappings are outside this contract and may be constrained with Linux cgroups.
+
+The PCD adapter admits its maximum 64 KiB header capacity and fixed overhead
+before allocating the header buffer or reading the Source. Its metadata-only
+plan is then combined with projection and encoder bounds before payload input.
 
 ## IO and failure semantics
 

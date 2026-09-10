@@ -3,9 +3,13 @@
 use std::{
     collections::BTreeMap,
     ffi::OsString,
+    fs,
     path::{Path, PathBuf},
     process::{Command, Output},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -14,8 +18,44 @@ use pcx_cli::{
     terminal::{CapabilityQuery, DetectionContext, QueryResult},
 };
 
+static NEXT_TEMP_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+struct TempDirectory(PathBuf);
+
+impl TempDirectory {
+    fn new() -> Self {
+        let id = NEXT_TEMP_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+        let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+            "pcx-render-source-kind-{}-{id}",
+            std::process::id()
+        ));
+        fs::create_dir(&path).expect("temporary directory should be created");
+        Self(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/valid/pointcloud2.mcap")
+}
+
+fn named_fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+}
+
+fn pcd_fixture() -> PathBuf {
+    named_fixture("valid/pointcloud2-ascii.pcd")
 }
 
 fn render(arguments: &[&str]) -> Output {
@@ -64,7 +104,22 @@ impl CapabilityQuery for UnsupportedQuery {
 }
 
 #[test]
-fn grammar_requires_exactly_one_selector_and_accepts_all_backends() {
+fn render_help_describes_mcap_and_pcd_source_options() {
+    let output = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .args(["render", "--help"])
+        .output()
+        .expect("pcx should start");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let help = String::from_utf8(output.stdout).expect("help should be UTF-8");
+    assert!(help.contains("Usage: pcx render [OPTIONS] <INPUT>"));
+    assert!(help.contains("MCAP Point Frame or PCD Static Cloud Source"));
+    assert!(help.contains("MCAP Topic"));
+}
+
+#[test]
+fn grammar_accepts_static_clouds_and_rejects_multiple_temporal_selectors() {
     let path = fixture();
     let path = path.to_str().expect("fixture path should be UTF-8");
     for backend in ["auto", "unicode", "kitty", "sixel"] {
@@ -82,9 +137,11 @@ fn grammar_requires_exactly_one_selector_and_accepts_all_backends() {
         assert!(pcx_cli::cli::try_run_from(arguments.drain(..)).is_ok());
     }
 
-    for arguments in [
-        vec!["pcx", "render", "recording.mcap", "--topic", "/points"],
-        vec![
+    assert!(
+        pcx_cli::cli::try_run_from(["pcx", "render", "cloud.pcd", "--backend", "auto"]).is_ok()
+    );
+    assert!(
+        pcx_cli::cli::try_run_from([
             "pcx",
             "render",
             "recording.mcap",
@@ -94,10 +151,9 @@ fn grammar_requires_exactly_one_selector_and_accepts_all_backends() {
             "0",
             "--at",
             "1s",
-        ],
-    ] {
-        assert!(pcx_cli::cli::try_run_from(arguments).is_err());
-    }
+        ])
+        .is_err()
+    );
 }
 
 #[test]
@@ -128,6 +184,135 @@ fn redirected_auto_output_is_deterministic_plain_unicode() {
     assert!(!first.stdout.contains(&0x1b));
     let text = String::from_utf8(first.stdout).unwrap();
     assert!(text.chars().any(|glyph| matches!(glyph, '▀' | '▄' | '█')));
+}
+
+#[test]
+fn renders_a_pcd_static_cloud_without_temporal_selectors() {
+    let output = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(pcd_fixture())
+        .args(["--width", "8", "--height", "4"])
+        .output()
+        .expect("pcx should start");
+
+    assert!(
+        output.status.success(),
+        "render failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    assert!(!output.stdout.contains(&0x1b));
+    let text = String::from_utf8(output.stdout).expect("render should be UTF-8");
+    assert!(text.chars().any(|glyph| matches!(glyph, '▀' | '▄' | '█')));
+}
+
+#[test]
+fn pcd_ascii_and_binary_render_the_same_static_cloud() {
+    let render_pcd = |name| {
+        Command::new(env!("CARGO_BIN_EXE_pcx"))
+            .arg("render")
+            .arg(named_fixture(name))
+            .args(["--width", "8", "--height", "4"])
+            .output()
+            .expect("pcx should start")
+    };
+    let ascii = render_pcd("valid/pointcloud2-ascii.pcd");
+    let binary = render_pcd("valid/pointcloud2-binary.pcd");
+
+    assert!(ascii.status.success());
+    assert!(binary.status.success());
+    assert_eq!(ascii.stdout, binary.stdout);
+    assert!(ascii.stderr.is_empty());
+    assert!(binary.stderr.is_empty());
+}
+
+#[test]
+fn source_content_wins_over_misleading_filename_extensions() {
+    let directory = TempDirectory::new();
+    let renamed_pcd = directory.path().join("cloud.mcap");
+    let renamed_mcap = directory.path().join("recording.pcd");
+    std::fs::copy(pcd_fixture(), &renamed_pcd).expect("PCD fixture should be copied");
+    std::fs::copy(fixture(), &renamed_mcap).expect("MCAP fixture should be copied");
+
+    let pcd = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(&renamed_pcd)
+        .args(["--width", "8", "--height", "4"])
+        .output()
+        .expect("pcx should start");
+    assert!(
+        pcd.status.success(),
+        "renamed PCD failed: {}",
+        String::from_utf8_lossy(&pcd.stderr)
+    );
+
+    let mcap = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(&renamed_mcap)
+        .args(["--topic", "/lidar/points", "--frame", "0"])
+        .output()
+        .expect("pcx should start");
+    assert!(
+        mcap.status.success(),
+        "renamed MCAP failed: {}",
+        String::from_utf8_lossy(&mcap.stderr)
+    );
+}
+
+#[test]
+fn source_specific_render_options_fail_before_output() {
+    let pcd_with_selector = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(pcd_fixture())
+        .args(["--topic", "/points", "--frame", "0"])
+        .output()
+        .expect("pcx should start");
+    assert_eq!(pcd_with_selector.status.code(), Some(2));
+    assert!(pcd_with_selector.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&pcd_with_selector.stderr).contains("PCD Static Cloud"));
+
+    let mcap_without_selector = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(fixture())
+        .output()
+        .expect("pcx should start");
+    assert_eq!(mcap_without_selector.status.code(), Some(2));
+    assert!(mcap_without_selector.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&mcap_without_selector.stderr).contains("requires --topic"));
+}
+
+#[test]
+fn pcd_read_refusals_write_no_rendered_bytes() {
+    let unsupported = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(named_fixture(
+            "malformed/pcd-compressed-must-be-rejected.pcd",
+        ))
+        .output()
+        .expect("pcx should start");
+    assert_eq!(unsupported.status.code(), Some(4));
+    assert!(unsupported.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&unsupported.stderr).contains("binary_compressed"));
+
+    // The PCD header is valid but its payload is truncated. The combined plan
+    // must refuse before payload decoding can expose that later error.
+    let directory = TempDirectory::new();
+    let truncated = directory.path().join("truncated.pcd");
+    let mut bytes = fs::read(named_fixture("valid/pointcloud2-binary.pcd"))
+        .expect("binary PCD fixture should be read");
+    bytes.pop();
+    fs::write(&truncated, bytes).expect("truncated PCD should be written");
+    let too_small = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(truncated)
+        .args(["--width", "8", "--height", "4", "--memory-limit", "200000"])
+        .output()
+        .expect("pcx should start");
+    assert_eq!(too_small.status.code(), Some(6));
+    assert!(too_small.stdout.is_empty());
+    let diagnostic = String::from_utf8_lossy(&too_small.stderr);
+    assert!(diagnostic.contains("managed-memory peak"));
+    assert!(!diagnostic.contains("truncated"));
 }
 
 #[test]

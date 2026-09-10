@@ -11,4 +11,5 @@ pub mod ops;
 pub mod pcd;
 pub mod ply;
 pub mod ros2;
+mod source;
 pub mod terminal;

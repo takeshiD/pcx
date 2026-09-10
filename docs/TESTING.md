@@ -66,6 +66,15 @@ fixture.mcap
   -> expected schema + bit-level values
 ```
 
+Static-format CLI coverage also renders the reviewed ASCII and little-endian
+binary PCD fixtures through `pcx render`, compares their deterministic non-TTY
+output, and verifies that unsupported encodings and insufficient memory fail
+before rendered bytes are written. A valid-header/truncated-payload case proves
+that combined memory refusal precedes payload decoding, while renamed fixtures
+prove that content signatures, not extensions, select the Source adapter. A
+one-byte memory limit is rejected before the PCD reader consumes any header
+byte, and Source signature probing is tested at its 64 KiB read ceiling.
+
 ## Fixtures
 
 Fixtures remain under 1 MiB and need no Git LFS.

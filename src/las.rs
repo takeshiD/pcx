@@ -23,6 +23,10 @@ use std::sync::Arc;
 
 /// Default maximum number of decoded points retained by one read call.
 pub const DEFAULT_MAX_POINTS_PER_BATCH: usize = 50_000;
+const LAS_COMMON_HEADER_PROBE_BYTES: usize = 111;
+const LAS_VLR_HEADER_BYTES: u64 = 54;
+const LAS_EVLR_HEADER_BYTES: u64 = 60;
+const LAS_HEADER_FIXED_OVERHEAD: u128 = 4096;
 
 /// LAS payload encoding selected independently from a path extension.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -400,14 +404,16 @@ impl StaticCloudReader {
     where
         R: Read + Seek + Send + Sync + 'static,
     {
-        let header = Header::new(&mut input).map_err(Error::Las)?;
-        let point_count = usize::try_from(header.number_of_points())
-            .map_err(|_| Error::MemoryEstimateOverflow)?;
+        let probe = preflight_header_storage(&mut input, memory_limit_bytes)?;
+        let point_count =
+            usize::try_from(probe.point_count).map_err(|_| Error::MemoryEstimateOverflow)?;
         let dimensions = PointDimensions::new(point_count, 1).map_err(Error::Layout)?;
         let batch_points = point_count.max(1);
-        drop(header);
-        input.rewind().map_err(Error::Io)?;
-        let reader = Reader::new(input, ReadLimits::new(batch_points, memory_limit_bytes)?)?;
+        let reader = Reader::new_preflighted(
+            input,
+            ReadLimits::new(batch_points, memory_limit_bytes)?,
+            probe,
+        )?;
         Ok(Self { reader, dimensions })
     }
 
@@ -467,10 +473,31 @@ impl Reader {
     where
         R: Read + Seek + Send + Sync + 'static,
     {
+        let probe = preflight_header_storage(&mut input, limits.memory_limit_bytes)?;
+        Self::new_preflighted(input, limits, probe)
+    }
+
+    fn new_preflighted<R>(
+        mut input: R,
+        limits: ReadLimits,
+        probe: HeaderStorageProbe,
+    ) -> Result<Self, Error>
+    where
+        R: Read + Seek + Send + Sync + 'static,
+    {
+        input.rewind().map_err(Error::Io)?;
         let header = Header::new(&mut input).map_err(Error::Las)?;
+        if header.vlrs().len() as u64 != probe.vlr_count
+            || header.evlrs().len() as u64 != probe.evlr_count
+        {
+            return Err(Error::MalformedHeaderProbe(
+                "official parser did not retain every declared VLR/EVLR",
+            ));
+        }
         let mapping = SchemaMapping::for_format(header.point_format())?;
         let laz_chunk_table_bytes = laz_chunk_table_bytes(&mut input, &header)?;
-        let managed_peak_bytes = managed_peak(&header, &mapping, limits, laz_chunk_table_bytes)?;
+        let managed_peak_bytes = managed_peak(&header, &mapping, limits, laz_chunk_table_bytes)?
+            .max(probe.managed_header_bytes);
         if managed_peak_bytes > limits.memory_limit_bytes {
             return Err(Error::MemoryLimitExceeded {
                 required: managed_peak_bytes,
@@ -721,11 +748,243 @@ fn managed_peak(
         .and_then(|bytes| bytes.checked_add(header.system_identifier().len()))
         .and_then(|bytes| bytes.checked_add(header.generating_software().len()))
         .ok_or(Error::MemoryEstimateOverflow)?;
+    let record_structures = header
+        .vlrs()
+        .len()
+        .checked_add(header.evlrs().len())
+        .and_then(|count| count.checked_mul(size_of::<las::Vlr>()))
+        .and_then(|bytes| bytes.checked_mul(2))
+        .ok_or(Error::MemoryEstimateOverflow)?;
+    let retained_record_bytes = record_bytes
+        .checked_mul(2)
+        .ok_or(Error::MemoryEstimateOverflow)?;
     raw.checked_add(columns)
-        .and_then(|bytes| bytes.checked_add(record_bytes.saturating_mul(2)))
+        .and_then(|bytes| bytes.checked_add(retained_record_bytes))
+        .and_then(|bytes| bytes.checked_add(record_structures))
         .and_then(|bytes| bytes.checked_add(laz_chunk_table_bytes))
         .and_then(|bytes| bytes.checked_add(4096))
         .ok_or(Error::MemoryEstimateOverflow)
+}
+
+#[derive(Clone, Copy, Debug)]
+struct HeaderStorageProbe {
+    point_count: u64,
+    vlr_count: u64,
+    evlr_count: u64,
+    managed_header_bytes: usize,
+}
+
+fn preflight_header_storage(
+    input: &mut (impl Read + Seek),
+    memory_limit_bytes: usize,
+) -> Result<HeaderStorageProbe, Error> {
+    let file_len = input.seek(std::io::SeekFrom::End(0)).map_err(Error::Io)?;
+    let mut common = [0_u8; LAS_COMMON_HEADER_PROBE_BYTES];
+    read_probe_at(input, 0, &mut common)?;
+    if &common[..4] != b"LASF" {
+        return Err(Error::MalformedHeaderProbe("file signature is not LASF"));
+    }
+
+    let version = (common[24], common[25]);
+    let standard_header_size = match version {
+        (major, minor) if (major, minor) <= (1, 2) => 227_u64,
+        (1, 3) => 235,
+        _ => 375,
+    };
+    let header_size = u64::from(u16::from_le_bytes([common[94], common[95]]));
+    let point_offset = u64::from(u32::from_le_bytes(common[96..100].try_into().unwrap()));
+    let vlr_count = u64::from(u32::from_le_bytes(common[100..104].try_into().unwrap()));
+    let point_format = common[104];
+    let point_record_length = u64::from(u16::from_le_bytes([common[105], common[106]]));
+    let legacy_point_count = u64::from(u32::from_le_bytes(common[107..111].try_into().unwrap()));
+
+    if header_size < standard_header_size {
+        return Err(Error::MalformedHeaderProbe(
+            "declared header size is smaller than its LAS version",
+        ));
+    }
+    if point_offset < header_size {
+        return Err(Error::MalformedHeaderProbe(
+            "point-data offset is before the declared header end",
+        ));
+    }
+
+    let mut variable_bytes = header_size - standard_header_size;
+    let mut record_count = vlr_count;
+    admit_header_storage(variable_bytes, record_count, memory_limit_bytes)?;
+
+    let mut position = header_size;
+    let mut record_header = [0_u8; LAS_EVLR_HEADER_BYTES as usize];
+    for _ in 0..vlr_count {
+        let header_end = position
+            .checked_add(LAS_VLR_HEADER_BYTES)
+            .ok_or(Error::MemoryEstimateOverflow)?;
+        if header_end > point_offset || header_end > file_len {
+            return Err(Error::MalformedHeaderProbe(
+                "VLR header extends beyond point-data offset or file",
+            ));
+        }
+        read_probe_at(
+            input,
+            position,
+            &mut record_header[..LAS_VLR_HEADER_BYTES as usize],
+        )?;
+        let data_len = u64::from(u16::from_le_bytes([record_header[20], record_header[21]]));
+        variable_bytes = add_header_storage(
+            variable_bytes,
+            LAS_VLR_HEADER_BYTES + data_len,
+            record_count,
+            memory_limit_bytes,
+        )?;
+        position = header_end
+            .checked_add(data_len)
+            .ok_or(Error::MemoryEstimateOverflow)?;
+        if position > point_offset || position > file_len {
+            return Err(Error::MalformedHeaderProbe(
+                "VLR data extends beyond point-data offset or file",
+            ));
+        }
+    }
+    variable_bytes = add_header_storage(
+        variable_bytes,
+        point_offset - position,
+        record_count,
+        memory_limit_bytes,
+    )?;
+
+    let mut point_count = legacy_point_count;
+    let mut evlr_count = 0_u64;
+    if standard_header_size == 375 {
+        let mut las14 = [0_u8; 20];
+        read_probe_at(input, 235, &mut las14)?;
+        let evlr_start = u64::from_le_bytes(las14[..8].try_into().unwrap());
+        evlr_count = u64::from(u32::from_le_bytes(las14[8..12].try_into().unwrap()));
+        let extended_point_count = u64::from_le_bytes(las14[12..20].try_into().unwrap());
+        if point_count == 0 {
+            point_count = extended_point_count;
+        }
+        if evlr_start > 0 && evlr_count > 0 {
+            record_count = record_count
+                .checked_add(evlr_count)
+                .ok_or(Error::MemoryEstimateOverflow)?;
+            admit_header_storage(variable_bytes, record_count, memory_limit_bytes)?;
+
+            let point_end = point_offset
+                .checked_add(
+                    point_count
+                        .checked_mul(point_record_length)
+                        .ok_or(Error::MemoryEstimateOverflow)?,
+                )
+                .ok_or(Error::MemoryEstimateOverflow)?;
+            if point_format & 0x80 == 0 {
+                if evlr_start < point_end {
+                    return Err(Error::MalformedHeaderProbe(
+                        "EVLR offset is before uncompressed point-data end",
+                    ));
+                }
+                variable_bytes = add_header_storage(
+                    variable_bytes,
+                    evlr_start - point_end,
+                    record_count,
+                    memory_limit_bytes,
+                )?;
+            }
+
+            position = evlr_start;
+            for _ in 0..evlr_count {
+                let header_end = position
+                    .checked_add(LAS_EVLR_HEADER_BYTES)
+                    .ok_or(Error::MemoryEstimateOverflow)?;
+                if header_end > file_len {
+                    return Err(Error::MalformedHeaderProbe(
+                        "EVLR header extends beyond file",
+                    ));
+                }
+                read_probe_at(input, position, &mut record_header)?;
+                let data_len = u64::from_le_bytes(record_header[20..28].try_into().unwrap());
+                variable_bytes = add_header_storage(
+                    variable_bytes,
+                    LAS_EVLR_HEADER_BYTES,
+                    record_count,
+                    memory_limit_bytes,
+                )?;
+                variable_bytes =
+                    add_header_storage(variable_bytes, data_len, record_count, memory_limit_bytes)?;
+                position = header_end
+                    .checked_add(data_len)
+                    .ok_or(Error::MemoryEstimateOverflow)?;
+                if position > file_len {
+                    return Err(Error::MalformedHeaderProbe("EVLR data extends beyond file"));
+                }
+            }
+        }
+    }
+
+    let managed_header_bytes =
+        admit_header_storage(variable_bytes, record_count, memory_limit_bytes)?;
+    Ok(HeaderStorageProbe {
+        point_count,
+        vlr_count,
+        evlr_count,
+        managed_header_bytes,
+    })
+}
+
+fn admit_header_storage(
+    variable_bytes: u64,
+    record_count: u64,
+    memory_limit_bytes: usize,
+) -> Result<usize, Error> {
+    admit_header_storage_wide(u128::from(variable_bytes), record_count, memory_limit_bytes)
+}
+
+fn add_header_storage(
+    current: u64,
+    additional: u64,
+    record_count: u64,
+    memory_limit_bytes: usize,
+) -> Result<u64, Error> {
+    let next = u128::from(current) + u128::from(additional);
+    admit_header_storage_wide(next, record_count, memory_limit_bytes)?;
+    u64::try_from(next).map_err(|_| Error::MemoryEstimateOverflow)
+}
+
+fn admit_header_storage_wide(
+    variable_bytes: u128,
+    record_count: u64,
+    memory_limit_bytes: usize,
+) -> Result<usize, Error> {
+    let variable_storage = variable_bytes
+        .checked_mul(2)
+        .ok_or(Error::MemoryEstimateOverflow)?;
+    let record_storage = u128::from(record_count)
+        .checked_mul(size_of::<las::Vlr>() as u128)
+        .and_then(|bytes| bytes.checked_mul(2))
+        .ok_or(Error::MemoryEstimateOverflow)?;
+    let required = LAS_HEADER_FIXED_OVERHEAD
+        .checked_add(variable_storage)
+        .and_then(|bytes| bytes.checked_add(record_storage))
+        .ok_or(Error::MemoryEstimateOverflow)?;
+    if required > memory_limit_bytes as u128 {
+        return Err(Error::MemoryLimitExceeded {
+            required: usize::try_from(required).unwrap_or(usize::MAX),
+            limit: memory_limit_bytes,
+        });
+    }
+    Ok(required as usize)
+}
+
+fn read_probe_at(
+    input: &mut (impl Read + Seek),
+    position: u64,
+    buffer: &mut [u8],
+) -> Result<(), Error> {
+    input
+        .seek(std::io::SeekFrom::Start(position))
+        .map_err(Error::Io)?;
+    input
+        .read_exact(buffer)
+        .map_err(|error| Error::Las(error.into()))
 }
 
 fn laz_chunk_table_bytes(input: &mut (impl Read + Seek), header: &Header) -> Result<usize, Error> {
@@ -1072,6 +1331,7 @@ pub enum Error {
         limit: u64,
     },
     InvalidBoolean(u8),
+    MalformedHeaderProbe(&'static str),
     MalformedChunkTable(&'static str),
     CoordinateQuantization {
         axis: &'static str,
@@ -1117,6 +1377,9 @@ impl fmt::Display for Error {
             ),
             Self::InvalidBoolean(value) => {
                 write!(formatter, "LAS flag field must be 0 or 1, got {value}")
+            }
+            Self::MalformedHeaderProbe(reason) => {
+                write!(formatter, "malformed LAS header: {reason}")
             }
             Self::MalformedChunkTable(reason) => {
                 write!(formatter, "malformed LAZ chunk table: {reason}")

@@ -206,6 +206,12 @@ explicitly authorized.
 
 The read preflight accounts for a reusable raw point slab, all decoded
 columns, column tables, and retained header records before allocating a batch.
+Before calling the official `las` header parser, a fixed-buffer seekable probe
+walks the fixed header and every 54-byte VLR and 60-byte EVLR header. Checked
+declared payload lengths, header/VLR/point padding, and record structures must
+fit the memory limit before variable data can be read or allocated. The probe
+also supplies the Static Cloud point count, avoiding an additional allocating
+header parse.
 For `pcx render`, the declared point count is used as the caller's single-batch
 bound. The complete Static Cloud memory, projection raster, and terminal
 encoder are planned together before decoding, so projection performs one

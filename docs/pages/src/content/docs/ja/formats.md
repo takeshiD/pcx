@@ -99,7 +99,10 @@ scale／offset、CRS VLR／EVLR、完全なLAS headerは保持します。Classi
 synthetic／key-point／withheld／overlap flagは分離し、Extra Dimensionはdescriptorと
 ordered raw byteを保持します。
 
-通常のreadはcaller指定のpoint数でbatchをboundします。terminal renderingでは
+通常のreadはcaller指定のpoint数でbatchをboundします。official parserがheader
+recordをallocateする前に、fixed-buffer probeが宣言された全VLR／EVLR headerを走査し、
+payload length、padding、structure overheadをchecked arithmeticでadmitします。
+terminal renderingでは
 headerの宣言点数をwhole Static Cloudのbatch boundとし、point decode前にprojection
 raster／encoderと合わせてplanningします。これによりglobalな範囲へ一度だけfitし、
 `--memory-limit`に収まらないcloudはpartial batchごとのfitを行わず拒否します。

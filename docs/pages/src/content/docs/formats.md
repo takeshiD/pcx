@@ -109,6 +109,9 @@ attributes map to named typed Point Fields; Extra Bytes map to the ordered
 
 Reads use a caller-selected maximum points per batch and reject a memory bound
 that cannot cover the raw slab, decoded columns and retained header records.
+Before the official parser may allocate header records, a fixed-buffer probe
+walks every declared VLR/EVLR header and admits their payload lengths, padding,
+and structure overhead with checked arithmetic.
 For terminal rendering, the header-declared point count becomes the batch bound
 and the complete Static Cloud, projection raster, and encoder are planned
 together before point decoding. This preserves one global fit; oversized clouds

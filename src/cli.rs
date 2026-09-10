@@ -31,6 +31,7 @@ use crate::{
         ProjectionError, ProjectionPlan, Raster, RasterDimensions, Rgb8,
     },
     pcd::{self, Encoding},
+    png::{PngError, PngPlan},
     ros2,
     source::{self, SourceKind},
     terminal::{
@@ -144,7 +145,7 @@ fn report_error(error: &Error) -> ExitStatus {
     name = "pcx",
     version,
     about = "Inspect and reduce point-cloud recordings on edge Linux systems",
-    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nInspect MCAP metadata and Topics, extract one ROS 2 PointCloud2 frame to PCD, render an MCAP Point Frame or a PCD, LAS, or LAZ Static Cloud, or copy one selected encoded message into a reduced MCAP."
+    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nInspect MCAP metadata and Topics, extract one ROS 2 PointCloud2 frame to PCD, render an MCAP Point Frame or a PCD, LAS, or LAZ Static Cloud, write a projected PNG snapshot, or copy one selected encoded message into a reduced MCAP."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -171,6 +172,8 @@ enum Command {
     Passthrough(PassthroughArgs),
     /// Render one MCAP Point Frame or PCD, LAS, or LAZ Static Cloud to stdout.
     Render(RenderArgs),
+    /// Write a projected ROS 2 PointCloud2 Point Frame as an RGBA8 PNG.
+    Snapshot(SnapshotArgs),
 }
 
 impl Cli {
@@ -386,6 +389,51 @@ struct RenderArgs {
     memory_limit: u64,
 }
 
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("selector")
+        .required(true)
+        .multiple(false)
+        .args(["frame", "at"])
+))]
+struct SnapshotArgs {
+    /// MCAP Source containing the Point Frame.
+    #[arg(value_name = "INPUT.mcap")]
+    input: PathBuf,
+
+    /// Topic whose messages are counted as Point Frames.
+    #[arg(long, value_name = "TOPIC")]
+    topic: String,
+
+    /// Zero-based Point Frame index after Topic selection.
+    #[arg(long, value_name = "INDEX")]
+    frame: Option<u64>,
+
+    /// First Point Frame at or after this duration from recording start.
+    #[arg(long, value_name = "DURATION", value_parser = parse_duration)]
+    at: Option<Duration>,
+
+    /// Output PNG path, or '-' for binary-safe stdout.
+    #[arg(short, long, value_name = "PATH|-", required = true)]
+    output: PathBuf,
+
+    /// Replace an existing output file.
+    #[arg(long)]
+    force: bool,
+
+    /// Projection raster width in pixels.
+    #[arg(long, value_name = "PIXELS", default_value_t = DEFAULT_RENDER_WIDTH)]
+    width: usize,
+
+    /// Projection raster height in pixels.
+    #[arg(long, value_name = "PIXELS", default_value_t = DEFAULT_RENDER_HEIGHT)]
+    height: usize,
+
+    /// Hard managed-memory limit in bytes.
+    #[arg(long, value_name = "BYTES", default_value_t = DEFAULT_RENDER_MEMORY_LIMIT)]
+    memory_limit: u64,
+}
+
 /// Parse command-line arguments without terminating the process.
 pub fn try_run_from<I, T>(args: I) -> Result<(), clap::Error>
 where
@@ -458,10 +506,128 @@ fn run(cli: Cli, output: &mut impl Write) -> Result<(), RunFailure> {
             &ProcessContext,
             Arc::new(ConservativeCapabilityQuery),
         ),
+        Some(Command::Snapshot(args)) => run_snapshot(args),
         None => {
             command().write_help(output).map_err(RunFailure::output)?;
             writeln!(output).map_err(RunFailure::output)
         }
+    }
+}
+
+fn run_snapshot(args: SnapshotArgs) -> Result<(), RunFailure> {
+    let destination = if args.output.as_os_str() == "-" {
+        if args.force {
+            return Err(RunFailure::core(Error::new(
+                ErrorCategory::Usage,
+                "--force is only valid for file output",
+            )));
+        }
+        Destination::stdout()
+    } else {
+        Destination::file(args.output, args.force).map_err(RunFailure::core)?
+    };
+    let selector = match (args.frame, args.at) {
+        (Some(index), None) => FrameSelector::Index(index),
+        (None, Some(duration)) => FrameSelector::At(duration),
+        _ => unreachable!("clap requires exactly one frame selector"),
+    };
+    let source_spec = SourceSpec::file(args.input).map_err(RunFailure::core)?;
+    let job = JobSpec::snapshot(source_spec, args.topic, selector, destination.clone())
+        .map_err(RunFailure::core)?;
+    let dimensions = RasterDimensions::new(args.width, args.height).map_err(projection_failure)?;
+    let options = SourceOptions::default();
+    plan_selection_job(job.clone(), options, args.memory_limit)?;
+
+    let handler = InterruptHandler::install().map_err(|error| RunFailure {
+        category: ErrorCategory::Internal,
+        message: format!("could not install interrupt handler: {error}"),
+        broken_pipe: false,
+    })?;
+    check_snapshot_cancelled(&handler.cancellation)?;
+    let file = File::open(job.source().path()).map_err(|source| RunFailure {
+        category: ErrorCategory::Io,
+        message: format!(
+            "failed to open Source '{}': {source}",
+            job.source().path().display()
+        ),
+        broken_pipe: false,
+    })?;
+    let mut source = Source::new(file, options).map_err(probe_failure)?;
+    let (topic, selector, _) = job.snapshot_selection().expect("snapshot selection");
+    let selected =
+        mcap::select_topic_message(&mut source, topic, selector).map_err(selection_failure)?;
+    drop(source);
+    check_snapshot_cancelled(&handler.cancellation)?;
+    if !selected.is_ros2_pointcloud2_candidate() {
+        return Err(RunFailure::core(Error::new(
+            ErrorCategory::Unsupported,
+            format!(
+                "selected MCAP Channel {} is not declared as ROS 2 PointCloud2 with ros2msg/CDR encoding",
+                selected.channel_id()
+            ),
+        )));
+    }
+    let log_time = selected.log_time();
+    let publish_time = selected.publish_time();
+    let view = ros2::pointcloud2::decode(selected.into_data())
+        .map_err(|error| RunFailure {
+            category: ErrorCategory::InvalidData,
+            message: error.to_string(),
+            broken_pipe: false,
+        })?
+        .with_container_times(log_time, publish_time);
+    check_snapshot_cancelled(&handler.cancellation)?;
+    let projection = Projection::new(
+        dimensions,
+        OrthographicView::xy(),
+        DepthPolicy::Nearest,
+        InvalidProjectionCoordinatePolicy::Drop,
+        ColorPolicy::Uniform(Rgb8([255, 255, 255])),
+    );
+    let projection_plan = projection
+        .plan(
+            Arc::new(view.schema().clone()),
+            view.layout().dimensions(),
+            PointRepresentation::View,
+            &LossPolicy::lossless(),
+        )
+        .map_err(RunFailure::core)?;
+    let requirements = projection_plan
+        .memory_requirements_for_view(
+            &view,
+            PngPlan::encoder_memory_bound(),
+            ByteBound::bounded(0),
+            ByteBound::bounded(0),
+        )
+        .map_err(RunFailure::core)?;
+    Planner::new()
+        .plan(job, requirements, args.memory_limit)
+        .map_err(RunFailure::core)?;
+    let raster = projection_plan
+        .execute_view(&view)
+        .map_err(projection_failure)?;
+    check_snapshot_cancelled(&handler.cancellation)?;
+    let png = PngPlan::new(&raster).map_err(png_failure)?;
+    write_output(&destination, &handler.cancellation, |writer| {
+        match png.write(&mut &mut *writer, &handler.cancellation) {
+            Ok(()) => Ok(()),
+            Err(PngError::Io(error)) => Err(error),
+            Err(error) => Err(io::Error::other(error)),
+        }
+    })
+    .map_err(RunFailure::core)?;
+    Ok(())
+}
+
+fn check_snapshot_cancelled(cancellation: &Cancellation) -> Result<(), RunFailure> {
+    if cancellation.is_cancelled() {
+        Err(RunFailure {
+            category: ErrorCategory::Interrupted,
+            message: "snapshot was interrupted".to_owned(),
+            broken_pipe: false,
+        })
+    } else {
+        Ok(())
     }
 }
 
@@ -1087,6 +1253,18 @@ fn las_read_failure(error: las::Error) -> RunFailure {
         category,
         message: error.to_string(),
         broken_pipe: false,
+    }
+}
+
+fn png_failure(error: PngError) -> RunFailure {
+    RunFailure {
+        category: match &error {
+            PngError::DimensionExceeded | PngError::SizeOverflow => ErrorCategory::Resource,
+            PngError::Interrupted => ErrorCategory::Interrupted,
+            PngError::Io(_) => ErrorCategory::Io,
+        },
+        message: error.to_string(),
+        broken_pipe: matches!(&error, PngError::Io(source) if source.kind() == io::ErrorKind::BrokenPipe),
     }
 }
 

@@ -24,6 +24,7 @@ src/
 ├── pcd/           PCD reader/writer adapter
 ├── ply/           faithful scalar-vertex PLY adapter
 ├── las/           bounded LAS/LAZ reader/writer adapter
+├── png.rs         bounded projected-raster PNG encoder
 ├── ops/           semantic point operators
 ├── terminal.rs    terminal capability policy and adapter root
 └── terminal/      bounded terminal raster encoders
@@ -32,13 +33,14 @@ src/
 Allowed dependencies:
 
 ```text
-cli  -> core, source, mcap, ros2, pcd, ply, ops
+cli  -> core, source, mcap, ros2, pcd, ply, las, png, ops, terminal
 source -> standard library only
 mcap -> core
 ros2 -> core
 pcd  -> core
 ply  -> core
 las  -> core
+png  -> core, ops
 ops  -> core
 terminal -> core, ops
 core -> standard library and domain-focused utilities only
@@ -177,6 +179,11 @@ capability selection remain separate downstream concerns. The Sixel adapter
 consumes only this common raster and requires the canonical terminal policy to
 select Sixel; its bounded encoding contract is specified in
 [`TERMINAL.md`](./TERMINAL.md).
+
+The PNG adapter is a separate non-terminal raster consumer. It streams the
+common raster as deterministic RGBA8 with transparent empty cells under the
+bounded output contract in [`PNG.md`](./PNG.md). PNG snapshots are visualization
+side outputs, not depth/range images or point-cloud interchange files.
 
 The portable Unicode terminal encoder consumes that raster synchronously and
 streams bounded half-block text without retaining a frame-sized output buffer.

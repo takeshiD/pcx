@@ -13,11 +13,21 @@ description: Accepted format boundaries and fidelity rules.
 | PLY 1.0 | Scalar vertices in ASCII and both binary byte orders | ASCII and both binary byte orders | Adapter available; no CLI command yet |
 | LAS/LAZ | Bounded synchronous batches | Bounded synchronous batches | Readable as a Static Cloud through `pcx render` |
 | Terminal raster | One selected MCAP Point Frame or PCD/LAS/LAZ Static Cloud | Unicode/ANSI, Kitty, or Sixel | Available through `pcx render` |
+| PNG | No | Projected RGBA8 visualization | Available through `pcx snapshot` |
 
 LAS/LAZ conversion commands remain later work. The CPU rasterizer,
 conservative capability selection, and Unicode, Kitty, and Sixel terminal
 backends are available through `pcx render`. AWS/S3 transports and cloud credentials are not
 product features.
+
+## Projected PNG snapshots
+
+`pcx snapshot` streams the common XY orthographic raster as non-interlaced
+RGBA8 PNG. Occupied cells are opaque white and empty cells transparent. The
+encoder has fixed 8 KiB scratch and participates in managed-memory preflight;
+file output is committed atomically. PNG is a visualization side output only:
+depth maps, LiDAR range images, point-cloud reconstruction, and PNG input are
+not supported. See the [PNG contract](https://github.com/takeshiD/pcx/blob/main/docs/PNG.md).
 
 ## Terminal rendering
 

@@ -57,6 +57,15 @@ supported PCD subset and LAS/LAZ, then apply the same bounded projection and
 terminal output policy as MCAP rendering. LAS and LAZ use one global fit and
 must fit as a complete declared cloud under `--memory-limit`.
 
+## Write a PNG snapshot
+
+```bash
+pcx snapshot run.mcap --topic /lidar/points --frame 0 -o frame.png
+```
+
+The PNG is a projected RGBA8 visualization with transparent empty pixels, not
+a depth map or lossless point-cloud file.
+
 Transfer output with the shell rather than a cloud client:
 
 ```bash

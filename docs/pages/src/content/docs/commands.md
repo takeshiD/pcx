@@ -23,6 +23,8 @@ pcx render INPUT.pcd \
 pcx render INPUT.las|INPUT.laz \
   [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
   [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
+pcx snapshot INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
+  -o OUTPUT.png|- [--width PIXELS] [--height PIXELS] [--memory-limit BYTES] [--force]
 ```
 
 `pcx info` streams through an MCAP Source without decoding point frames. Human output and versioned JSON go to stdout; successful inspection leaves stderr empty.
@@ -96,12 +98,27 @@ Source format detection uses bounded
 content signatures rather than filename extensions, so renamed MCAP and PCD
 files retain their behavior.
 
+## Write a projected PNG snapshot
+
+```bash
+pcx snapshot INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
+  -o OUTPUT.png|- [--width PIXELS] [--height PIXELS] [--memory-limit BYTES] [--force]
+```
+
+`pcx snapshot` uses the same strict decode, selector, and bounded XY projection
+as `render`, then streams deterministic RGBA8 PNG. Occupied cells are opaque
+white and empty cells are transparent. The output is a visualization artifact,
+not a depth map, range image, point-cloud interchange format, or PNG input path.
+An explicit path or binary-safe `-` is required. File output is atomic and
+requires `--force` to replace an existing destination.
+
 ## Streams and exit status
 
 - Human diagnostics and progress use stderr.
 - Data and `--json` results use stdout.
 - `pcx render` writes its single rendered frame to stdout; redirected automatic
   output contains no terminal control sequences.
+- `pcx snapshot -o -` writes only binary PNG bytes to stdout.
 - Successful `--json` output uses stdout. Failures from a successfully parsed JSON command leave stdout empty and write a versioned JSON error object to stderr.
 - The JSON schemas and compatibility policy are published in [`docs/json-schema`](https://github.com/takeshiD/pcx/tree/main/docs/json-schema). Human-readable output and diagnostic message wording are not compatibility contracts.
 - Success is `0`; usage errors, invalid data and resource refusal are non-zero.

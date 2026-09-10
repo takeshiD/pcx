@@ -23,6 +23,8 @@ pcx render INPUT.pcd \
 pcx render INPUT.las|INPUT.laz \
   [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
   [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
+pcx snapshot INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
+  -o OUTPUT.png|- [--width PIXELS] [--height PIXELS] [--memory-limit BYTES] [--force]
 ```
 
 `pcx info`はPoint FrameをdecodeせずにMCAP Sourceをstreamingで調査します。human outputとversion付きJSONはstdoutへ出力され、成功時のstderrは空です。
@@ -90,6 +92,19 @@ encoder memoryをboundします。LAS/LAZ renderingはdecode前にheaderの宣�
 Static Cloud全体を1 bounded batchとしてadmitし、globalな範囲へ一度だけfitします。
 収まらないcloudはbatchごとにrenderせず拒否します。Source formatはfilename extensionではなくboundedな
 content signatureで判定するため、renameしたMCAP／PCDも元の挙動を維持します。
+
+## projection済みPNG snapshotを書く
+
+```bash
+pcx snapshot INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
+  -o OUTPUT.png|- [--width PIXELS] [--height PIXELS] [--memory-limit BYTES] [--force]
+```
+
+`pcx snapshot`は`render`と同じstrict decode、selector、bounded XY projectionを使い、
+deterministicなRGBA8 PNGをstreamingします。occupied cellはopaque white、empty cellは
+transparentです。depth map、range image、点群交換format、PNG inputではありません。
+明示的なpathまたはbinary-safeな`-`が必要です。file outputはatomicにcommitし、既存
+destinationの置換には`--force`が必要です。
 
 human-readableな診断はstderr、成功した`--json`のデータと`pcx render`の1 frameは
 stdoutに出力します。`render`のautomaticなredirected outputにはterminal control

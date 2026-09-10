@@ -4,7 +4,7 @@
 
 `pcx`は、edge Linux上にある点群recordingをshellから調査・縮小するためのtoolboxです。
 
-> **開発状況:** 開発中です。実行ファイルはMCAP調査、1 frameのPCD抽出、1 messageのfaithfulなMCAP passthrough、MCAP Point FrameおよびPCD／LAS／LAZ Static Cloudのterminal renderingを提供します。
+> **開発状況:** 開発中です。実行ファイルはMCAP調査、1 frameのPCD抽出、projectionしたPNG snapshot、1 messageのfaithfulなMCAP passthrough、MCAP Point FrameおよびPCD／LAS／LAZ Static Cloudのterminal renderingを提供します。
 
 ## なぜpcxか
 
@@ -31,6 +31,7 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 | crop、field選択、frame単位voxel | 計画中 |
 | PLY scalar-vertex adapter（CLI integration は今後） | 内部で利用可能 |
 | `pcx render` CPU projection／terminal出力 | 利用可能 |
+| `pcx snapshot` projection済みRGBA8 PNG出力 | 利用可能 |
 | AWS/S3 upload、cloud credential | 対象外 |
 | macOS／Windows | 将来候補・時期未定 |
 
@@ -81,15 +82,18 @@ pcx render tests/fixtures/valid/pointcloud2-ascii.pcd \
   --width 32 --height 12
 pcx render tests/fixtures/valid/las-pdal.laz \
   --width 32 --height 12
+pcx snapshot tests/fixtures/valid/pointcloud2.mcap \
+  --topic /lidar/points --frame 0 -o /tmp/frame.png
 ```
 
 最初のcommandでTopicを特定し、ROS 2 `PointCloud2`候補であることを確認します。
 `render`は選択したframeをinline previewし、`extract`は同じframeをPCDの
 investigation artifactとして保存します。recording-relativeなlog timeで選ぶ場合は
 `--frame 0`の代わりに`--at 0ns`を使います。
-最後の2 commandはPCD／LAZ Static Cloudを直接読み取ります。static Sourceには
+Static CloudのcommandはPCD／LAZを直接読み取ります。static Sourceには
 TopicやPoint Frame selectorを指定しません。同等の非圧縮fixture
-`tests/fixtures/valid/las-pdal.las`もrepositoryに含まれます。
+`tests/fixtures/valid/las-pdal.las`もrepositoryに含まれます。最後のcommandは選択した
+MCAP Point Frameをprojection済みRGBA8 PNGとして保存します。
 
 ![Topic discovery、Unicode rendering、ASCII PCD extractionを示すpcx Quick Start demo](./demo/quickstart.gif)
 
@@ -98,8 +102,8 @@ TopicやPoint Frame selectorを指定しません。同等の非圧縮fixture
 
 ## Command例
 
-現在の5つのsubcommandで、MCAP inspection、Point Frame selection、terminal preview、
-PCD extraction、faithful encoded passthroughを扱います。
+現在の6つのsubcommandで、MCAP inspection、Point Frame selection、terminal preview、
+PNG snapshot、PCD extraction、faithful encoded passthroughを扱います。
 
 ```bash
 pcx info run.mcap
@@ -119,6 +123,10 @@ pcx render run.mcap \
 pcx render cloud.pcd
 pcx render cloud.las
 pcx render cloud.laz
+pcx snapshot run.mcap \
+  --topic /lidar/points \
+  --frame 0 \
+  -o frame.png
 ```
 
 `--frame INDEX`と`--at DURATION`のどちらか一方を指定します。binary PCDが
@@ -144,6 +152,10 @@ protocolをautomaticには許可しません。interactiveなbackendを固定す
 `kitty`、`sixel`を使います。graphics／ANSIを使うbackendをredirected stdoutへ
 明示指定した場合は、escape sequenceを書き込む前に拒否します。`NO_COLOR`は
 Unicode出力のANSI colorを無効にします。
+
+`pcx snapshot`は同じbounded XY projectionを適用し、空pixelをtransparentにした
+deterministicなRGBA8 PNGを書きます。これは可視化用artifactであり、depth map、
+range image、losslessな点群format、PNG input pathではありません。
 
 全optionは`pcx <COMMAND> --help`で確認できます。stream behavior、limit、backend
 selection、exit statusの詳細は

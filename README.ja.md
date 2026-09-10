@@ -4,7 +4,7 @@
 
 `pcx`は、edge Linux上にある点群recordingをshellから調査・縮小するためのtoolboxです。
 
-> **開発状況:** 開発中です。実行ファイルはMCAP調査、1 frameのPCD抽出、1 messageのfaithfulなMCAP passthrough、MCAP Point Frame／PCD Static Cloudのterminal renderingを提供します。
+> **開発状況:** 開発中です。実行ファイルはMCAP調査、1 frameのPCD抽出、1 messageのfaithfulなMCAP passthrough、MCAP Point FrameおよびPCD／LAS／LAZ Static Cloudのterminal renderingを提供します。
 
 ## なぜpcxか
 
@@ -27,11 +27,10 @@ bounded memory、binary-safeなstdout、stderrへの明確な診断を備えた�
 | binary／ASCII PCD出力 | 利用可能 |
 | strict PCD reader／Static Cloud rendering | 利用可能 |
 | encoded 1 message MCAP passthrough | 利用可能 |
-| bounded synchronous LAS/LAZ library I/O | 利用可能 |
+| LAS/LAZ reader／writer／Static Cloud rendering | 利用可能 |
 | crop、field選択、frame単位voxel | 計画中 |
 | PLY scalar-vertex adapter（CLI integration は今後） | 内部で利用可能 |
 | `pcx render` CPU projection／terminal出力 | 利用可能 |
-| LAS/LAZ CLI command | 計画中 |
 | AWS/S3 upload、cloud credential | 対象外 |
 | macOS／Windows | 将来候補・時期未定 |
 
@@ -80,14 +79,17 @@ pcx extract tests/fixtures/valid/pointcloud2.mcap \
   --topic /lidar/points --frame 0 --encoding ascii -o /tmp/frame.pcd
 pcx render tests/fixtures/valid/pointcloud2-ascii.pcd \
   --width 32 --height 12
+pcx render tests/fixtures/valid/las-pdal.laz \
+  --width 32 --height 12
 ```
 
 最初のcommandでTopicを特定し、ROS 2 `PointCloud2`候補であることを確認します。
 `render`は選択したframeをinline previewし、`extract`は同じframeをPCDの
 investigation artifactとして保存します。recording-relativeなlog timeで選ぶ場合は
 `--frame 0`の代わりに`--at 0ns`を使います。
-最後のcommandはPCD Static Cloudを直接読み取ります。static SourceにはTopicや
-Point Frame selectorを指定しません。
+最後の2 commandはPCD／LAZ Static Cloudを直接読み取ります。static Sourceには
+TopicやPoint Frame selectorを指定しません。同等の非圧縮fixture
+`tests/fixtures/valid/las-pdal.las`もrepositoryに含まれます。
 
 ![Topic discovery、Unicode rendering、ASCII PCD extractionを示すpcx Quick Start demo](./demo/quickstart.gif)
 
@@ -115,6 +117,8 @@ pcx render run.mcap \
   --topic /lidar/points \
   --frame 0
 pcx render cloud.pcd
+pcx render cloud.las
+pcx render cloud.laz
 ```
 
 `--frame INDEX`と`--at DURATION`のどちらか一方を指定します。binary PCDが
@@ -128,9 +132,11 @@ metadata、application-private recordを保持します。派生container構造�
 CRCはdeterministicに再生成し、memoryをboundするためattachment／metadata indexは
 省略します。
 
-`pcx render`は選択した1 MCAP Point Frameまたは1 PCD Static Cloudを
+`pcx render`は選択した1 MCAP Point Frameまたは1 PCD／LAS／LAZ Static Cloudを
 decode／projectionし、inline imageを1枚stdoutへ出力します。MCAPでは`--topic`と
-selectorのどちらか一方が必須で、PCDではどちらも指定しません。defaultの
+selectorのどちらか一方が必須で、static Sourceではどちらも指定しません。
+LAS/LAZは宣言されたStatic Cloud全体が`--memory-limit`に収まる場合だけ読み取り、
+batchごとに別々の範囲へfitしません。defaultの
 `--backend auto`では、redirectされたstdoutには
 control sequenceを含まないdeterministicなUnicode textを出力します。interactive
 terminalではconservativeにUnicodeへfallbackします。現在のprocess queryはgraphics

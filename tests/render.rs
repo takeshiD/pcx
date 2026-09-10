@@ -104,7 +104,7 @@ impl CapabilityQuery for UnsupportedQuery {
 }
 
 #[test]
-fn render_help_describes_mcap_and_pcd_source_options() {
+fn render_help_describes_temporal_and_static_source_options() {
     let output = Command::new(env!("CARGO_BIN_EXE_pcx"))
         .args(["render", "--help"])
         .output()
@@ -114,7 +114,7 @@ fn render_help_describes_mcap_and_pcd_source_options() {
     assert!(output.stderr.is_empty());
     let help = String::from_utf8(output.stdout).expect("help should be UTF-8");
     assert!(help.contains("Usage: pcx render [OPTIONS] <INPUT>"));
-    assert!(help.contains("MCAP Point Frame or PCD Static Cloud Source"));
+    assert!(help.contains("MCAP Point Frame or PCD, LAS, or LAZ Static Cloud Source"));
     assert!(help.contains("MCAP Topic"));
 }
 
@@ -227,12 +227,44 @@ fn pcd_ascii_and_binary_render_the_same_static_cloud() {
 }
 
 #[test]
+fn las_and_laz_render_the_same_static_cloud() {
+    let render_las = |name| {
+        Command::new(env!("CARGO_BIN_EXE_pcx"))
+            .arg("render")
+            .arg(named_fixture(name))
+            .args(["--width", "8", "--height", "4"])
+            .output()
+            .expect("pcx should start")
+    };
+    let las = render_las("valid/las-pdal.las");
+    let laz = render_las("valid/las-pdal.laz");
+
+    assert!(
+        las.status.success(),
+        "{}",
+        String::from_utf8_lossy(&las.stderr)
+    );
+    assert!(
+        laz.status.success(),
+        "{}",
+        String::from_utf8_lossy(&laz.stderr)
+    );
+    assert_eq!(las.stdout, laz.stdout);
+    assert!(las.stderr.is_empty());
+    assert!(laz.stderr.is_empty());
+    assert!(!las.stdout.contains(&0x1b));
+}
+
+#[test]
 fn source_content_wins_over_misleading_filename_extensions() {
     let directory = TempDirectory::new();
     let renamed_pcd = directory.path().join("cloud.mcap");
     let renamed_mcap = directory.path().join("recording.pcd");
+    let renamed_las = directory.path().join("cloud.data");
     std::fs::copy(pcd_fixture(), &renamed_pcd).expect("PCD fixture should be copied");
     std::fs::copy(fixture(), &renamed_mcap).expect("MCAP fixture should be copied");
+    std::fs::copy(named_fixture("valid/las-pdal.las"), &renamed_las)
+        .expect("LAS fixture should be copied");
 
     let pcd = Command::new(env!("CARGO_BIN_EXE_pcx"))
         .arg("render")
@@ -257,6 +289,18 @@ fn source_content_wins_over_misleading_filename_extensions() {
         "renamed MCAP failed: {}",
         String::from_utf8_lossy(&mcap.stderr)
     );
+
+    let las = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(&renamed_las)
+        .args(["--width", "8", "--height", "4"])
+        .output()
+        .expect("pcx should start");
+    assert!(
+        las.status.success(),
+        "renamed LAS failed: {}",
+        String::from_utf8_lossy(&las.stderr)
+    );
 }
 
 #[test]
@@ -270,6 +314,20 @@ fn source_specific_render_options_fail_before_output() {
     assert_eq!(pcd_with_selector.status.code(), Some(2));
     assert!(pcd_with_selector.stdout.is_empty());
     assert!(String::from_utf8_lossy(&pcd_with_selector.stderr).contains("PCD Static Cloud"));
+
+    for name in ["valid/las-pdal.las", "valid/las-pdal.laz"] {
+        let las_with_selector = Command::new(env!("CARGO_BIN_EXE_pcx"))
+            .arg("render")
+            .arg(named_fixture(name))
+            .args(["--topic", "/points", "--frame", "0"])
+            .output()
+            .expect("pcx should start");
+        assert_eq!(las_with_selector.status.code(), Some(2));
+        assert!(las_with_selector.stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(&las_with_selector.stderr).contains("LAS/LAZ Static Cloud")
+        );
+    }
 
     let mcap_without_selector = Command::new(env!("CARGO_BIN_EXE_pcx"))
         .arg("render")
@@ -313,6 +371,30 @@ fn pcd_read_refusals_write_no_rendered_bytes() {
     let diagnostic = String::from_utf8_lossy(&too_small.stderr);
     assert!(diagnostic.contains("managed-memory peak"));
     assert!(!diagnostic.contains("truncated"));
+}
+
+#[test]
+fn las_read_refusals_write_no_rendered_bytes() {
+    let directory = TempDirectory::new();
+    let malformed = directory.path().join("malformed.las");
+    fs::write(&malformed, b"LASF malformed LAS file").expect("write malformed LAS");
+    let invalid = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(&malformed)
+        .output()
+        .expect("pcx should start");
+    assert_eq!(invalid.status.code(), Some(3));
+    assert!(invalid.stdout.is_empty());
+
+    let too_small = Command::new(env!("CARGO_BIN_EXE_pcx"))
+        .arg("render")
+        .arg(named_fixture("valid/las-pdal.laz"))
+        .args(["--width", "8", "--height", "4", "--memory-limit", "70000"])
+        .output()
+        .expect("pcx should start");
+    assert_eq!(too_small.status.code(), Some(6));
+    assert!(too_small.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&too_small.stderr).contains("planned managed-memory peak"));
 }
 
 #[test]

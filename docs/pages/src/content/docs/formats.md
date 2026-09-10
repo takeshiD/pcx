@@ -11,19 +11,19 @@ description: Accepted format boundaries and fidelity rules.
 | ROS 2 `sensor_msgs/msg/PointCloud2` | Strict CDR decoding | No | Available |
 | PCD | ASCII and little-endian binary | Binary and ASCII | Readable as a Static Cloud through `pcx render` |
 | PLY 1.0 | Scalar vertices in ASCII and both binary byte orders | ASCII and both binary byte orders | Adapter available; no CLI command yet |
-| LAS/LAZ | Bounded synchronous batches | Bounded synchronous batches | Library adapter available; CLI not yet exposed |
-| Terminal raster | One selected MCAP Point Frame or PCD Static Cloud | Unicode/ANSI, Kitty, or Sixel | Available through `pcx render` |
+| LAS/LAZ | Bounded synchronous batches | Bounded synchronous batches | Readable as a Static Cloud through `pcx render` |
+| Terminal raster | One selected MCAP Point Frame or PCD/LAS/LAZ Static Cloud | Unicode/ANSI, Kitty, or Sixel | Available through `pcx render` |
 
-LAS/LAZ CLI integration remains later work. The CPU rasterizer, conservative
-capability selection, and Unicode, Kitty, and Sixel terminal backends are
-available through `pcx render`. AWS/S3 transports and cloud credentials are not
+LAS/LAZ conversion commands remain later work. The CPU rasterizer,
+conservative capability selection, and Unicode, Kitty, and Sixel terminal
+backends are available through `pcx render`. AWS/S3 transports and cloud credentials are not
 product features.
 
 ## Terminal rendering
 
 `pcx render` selects one ROS 2 `PointCloud2` Point Frame from MCAP or reads one
-PCD Static Cloud and projects it into a bounded terminal-neutral raster. MCAP
-requires Topic and Point Frame selectors; PCD rejects them. Projection is
+PCD, LAS, or LAZ Static Cloud and projects it into a bounded terminal-neutral raster. MCAP
+requires Topic and Point Frame selectors; static Sources reject them. Projection is
 synchronous,
 orthographic, axis-aligned, fitted to the requested raster, and frame-local. It
 does not modify or replace the Source Point Frame.
@@ -109,6 +109,10 @@ attributes map to named typed Point Fields; Extra Bytes map to the ordered
 
 Reads use a caller-selected maximum points per batch and reject a memory bound
 that cannot cover the raw slab, decoded columns and retained header records.
+For terminal rendering, the header-declared point count becomes the batch bound
+and the complete Static Cloud, projection raster, and encoder are planned
+together before point decoding. This preserves one global fit; oversized clouds
+are refused rather than fitted independently per batch.
 Serial LAZ compression avoids an unbounded parallel queue, and writers require
 a maximum point count so the chunk table is planned before output. Writing
 refuses coordinate quantization unless representation loss is explicitly

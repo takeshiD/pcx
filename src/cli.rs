@@ -21,6 +21,7 @@ use crate::{
         point::{PointBatch, PointView},
         write_output,
     },
+    las,
     mcap::{
         self, DiscoveredChannel, PassthroughCompression, PassthroughError, ProbeError,
         SelectionError, Source, SourceOptions, TopicDiscovery,
@@ -143,7 +144,7 @@ fn report_error(error: &Error) -> ExitStatus {
     name = "pcx",
     version,
     about = "Inspect and reduce point-cloud recordings on edge Linux systems",
-    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nInspect MCAP metadata and Topics, extract one ROS 2 PointCloud2 frame to PCD, render an MCAP Point Frame or PCD Static Cloud, or copy one selected encoded message into a reduced MCAP."
+    long_about = "Inspect and reduce point-cloud recordings on edge Linux systems.\n\nInspect MCAP metadata and Topics, extract one ROS 2 PointCloud2 frame to PCD, render an MCAP Point Frame or a PCD, LAS, or LAZ Static Cloud, or copy one selected encoded message into a reduced MCAP."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -168,7 +169,7 @@ enum Command {
     Extract(ExtractArgs),
     /// Copy one selected encoded message into a faithful reduced MCAP.
     Passthrough(PassthroughArgs),
-    /// Render one MCAP Point Frame or PCD Static Cloud to stdout.
+    /// Render one MCAP Point Frame or PCD, LAS, or LAZ Static Cloud to stdout.
     Render(RenderArgs),
 }
 
@@ -344,7 +345,7 @@ impl From<RenderBackend> for BackendChoice {
         .args(["frame", "at"])
 ))]
 struct RenderArgs {
-    /// MCAP Point Frame or PCD Static Cloud Source.
+    /// MCAP Point Frame or PCD, LAS, or LAZ Static Cloud Source.
     #[arg(value_name = "INPUT")]
     input: PathBuf,
 
@@ -476,6 +477,7 @@ impl CapabilityQuery for ConservativeCapabilityQuery {
 enum PreparedRenderPointData {
     View(PointView),
     Pcd(pcd::StaticCloudReader<File>),
+    Las(las::StaticCloudReader),
 }
 
 impl PreparedRenderPointData {
@@ -486,10 +488,18 @@ impl PreparedRenderPointData {
             .map_err(pcd_read_failure)
     }
 
+    fn las(file: File, memory_limit: u64) -> Result<Self, RunFailure> {
+        let read_limit = usize::try_from(memory_limit).unwrap_or(usize::MAX);
+        las::StaticCloudReader::new(file, read_limit)
+            .map(Self::Las)
+            .map_err(las_read_failure)
+    }
+
     fn schema(&self) -> &crate::core::point::PointSchema {
         match self {
             Self::View(view) => view.schema(),
             Self::Pcd(reader) => reader.schema(),
+            Self::Las(reader) => reader.schema(),
         }
     }
 
@@ -497,13 +507,14 @@ impl PreparedRenderPointData {
         match self {
             Self::View(view) => view.layout().dimensions(),
             Self::Pcd(reader) => reader.dimensions(),
+            Self::Las(reader) => reader.dimensions(),
         }
     }
 
     const fn representation(&self) -> PointRepresentation {
         match self {
             Self::View(_) => PointRepresentation::View,
-            Self::Pcd(_) => PointRepresentation::Columns,
+            Self::Pcd(_) | Self::Las(_) => PointRepresentation::Columns,
         }
     }
 
@@ -536,6 +547,20 @@ impl PreparedRenderPointData {
                     queued_output,
                 )
             }
+            Self::Las(reader) => {
+                let retained_input = u64::try_from(reader.managed_peak_bytes()).map_err(|_| {
+                    Error::new(
+                        ErrorCategory::Resource,
+                        "LAS/LAZ retained-memory bound cannot be represented",
+                    )
+                })?;
+                plan.memory_requirements_for_columns(
+                    ByteBound::bounded(retained_input),
+                    encoder_buffer,
+                    output_buffer,
+                    queued_output,
+                )
+            }
         }
     }
 
@@ -546,6 +571,10 @@ impl PreparedRenderPointData {
                 .read()
                 .map(|decoded| RenderPointData::Batch(decoded.into_points()))
                 .map_err(pcd_read_failure),
+            Self::Las(reader) => reader
+                .read()
+                .map(RenderPointData::Batch)
+                .map_err(las_read_failure),
         }
     }
 }
@@ -619,6 +648,18 @@ where
             (
                 JobSpec::render_static(source_spec),
                 PreparedRenderPointData::pcd(file, args.memory_limit)?,
+            )
+        }
+        SourceKind::Las => {
+            if args.topic.is_some() || args.frame.is_some() || args.at.is_some() {
+                return Err(RunFailure::core(Error::new(
+                    ErrorCategory::Usage,
+                    "LAS/LAZ Static Cloud rendering does not accept --topic, --frame, or --at",
+                )));
+            }
+            (
+                JobSpec::render_static(source_spec),
+                PreparedRenderPointData::las(file, args.memory_limit)?,
             )
         }
         SourceKind::Mcap => {
@@ -1027,6 +1068,21 @@ fn pcd_failure(error: pcd::Error) -> RunFailure {
 fn pcd_read_failure(error: pcd::ReadError) -> RunFailure {
     RunFailure {
         category: error.category(),
+        message: error.to_string(),
+        broken_pipe: false,
+    }
+}
+
+fn las_read_failure(error: las::Error) -> RunFailure {
+    let category = match &error {
+        las::Error::Io(_) => ErrorCategory::Io,
+        las::Error::MemoryEstimateOverflow | las::Error::MemoryLimitExceeded { .. } => {
+            ErrorCategory::Resource
+        }
+        _ => ErrorCategory::InvalidData,
+    };
+    RunFailure {
+        category,
         message: error.to_string(),
         broken_pipe: false,
     }

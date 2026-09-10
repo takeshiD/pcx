@@ -365,6 +365,78 @@ pub struct Reader {
     managed_peak_bytes: usize,
 }
 
+/// A LAS/LAZ Static Cloud whose declared points fit one planned batch.
+///
+/// This adapter is intended for operators, such as projection, which need one
+/// global view of the cloud. Construction reads only format metadata and proves
+/// the peak managed-memory bound; point columns are not allocated until
+/// [`StaticCloudReader::read`] is called.
+pub struct StaticCloudReader {
+    reader: Reader,
+    dimensions: PointDimensions,
+}
+
+impl StaticCloudReader {
+    pub fn new<R>(mut input: R, memory_limit_bytes: usize) -> Result<Self, Error>
+    where
+        R: Read + Seek + Send + Sync + 'static,
+    {
+        let header = Header::new(&mut input).map_err(Error::Las)?;
+        let point_count = usize::try_from(header.number_of_points())
+            .map_err(|_| Error::MemoryEstimateOverflow)?;
+        let dimensions = PointDimensions::new(point_count, 1).map_err(Error::Layout)?;
+        let batch_points = point_count.max(1);
+        drop(header);
+        input.rewind().map_err(Error::Io)?;
+        let reader = Reader::new(input, ReadLimits::new(batch_points, memory_limit_bytes)?)?;
+        Ok(Self { reader, dimensions })
+    }
+
+    pub fn schema(&self) -> &PointSchema {
+        self.reader.schema()
+    }
+
+    pub const fn dimensions(&self) -> PointDimensions {
+        self.dimensions
+    }
+
+    pub const fn managed_peak_bytes(&self) -> usize {
+        self.reader.managed_peak_bytes()
+    }
+
+    /// Decode all declared points into the single batch admitted at construction.
+    pub fn read(mut self) -> Result<PointBatch, Error> {
+        let Some(points) = self.reader.next_batch()? else {
+            let columns = self
+                .reader
+                .mapping
+                .fields
+                .iter()
+                .map(|kind| empty_column(*kind, 0, self.reader.inner.header().point_format()))
+                .collect();
+            let metadata = Arc::new(PointFrameMetadata::new(
+                Timestamp::new(0, 0).expect("zero is a canonical timestamp"),
+                "",
+                true,
+            ));
+            return PointBatch::new(
+                Arc::clone(&self.reader.mapping.schema),
+                metadata,
+                self.dimensions,
+                columns,
+            )
+            .map_err(Error::Batch);
+        };
+        if points.dimensions() != self.dimensions {
+            return Err(Error::DeclaredPointCountMismatch {
+                declared: self.dimensions.point_count(),
+                actual: points.dimensions().point_count(),
+            });
+        }
+        Ok(points)
+    }
+}
+
 impl Reader {
     pub fn new<R>(mut input: R, limits: ReadLimits) -> Result<Self, Error>
     where
@@ -964,6 +1036,10 @@ pub enum Error {
         required: usize,
         limit: usize,
     },
+    DeclaredPointCountMismatch {
+        declared: usize,
+        actual: usize,
+    },
     SchemaMismatch,
     UnrepresentableFrameMetadata,
     PointLimitExceeded {
@@ -1000,6 +1076,10 @@ impl fmt::Display for Error {
             Self::MemoryLimitExceeded { required, limit } => write!(
                 formatter,
                 "LAS managed-memory peak of {required} bytes exceeds the {limit}-byte limit"
+            ),
+            Self::DeclaredPointCountMismatch { declared, actual } => write!(
+                formatter,
+                "LAS header declares {declared} points but the payload contains {actual}"
             ),
             Self::SchemaMismatch => formatter
                 .write_str("point schema does not exactly match the LAS point format mapping"),

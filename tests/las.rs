@@ -3,7 +3,7 @@
 
 use pcx_cli::core::point::{PointBatch, PointColumn, PointFrameMetadata, Timestamp};
 use pcx_cli::core::{FidelityLoss, LossPolicy};
-use pcx_cli::las::{Encoding, ReadLimits, Reader, WriteLimits, Writer};
+use pcx_cli::las::{Encoding, ReadLimits, Reader, StaticCloudReader, WriteLimits, Writer};
 use std::io::{Cursor, Read, Seek};
 use std::sync::Arc;
 
@@ -98,6 +98,21 @@ fn reads_pdal_las_through_the_common_schema() {
 #[test]
 fn reads_pdal_laz_with_the_same_mapping_and_bound() {
     read_fixture(LAZ);
+}
+
+#[test]
+fn static_cloud_reader_preflights_and_decodes_one_complete_batch() {
+    for source in [LAS, LAZ] {
+        let reader = StaticCloudReader::new(Cursor::new(source), 2 * 1024 * 1024).unwrap();
+        assert_eq!(reader.dimensions().point_count(), 2);
+        assert!(reader.managed_peak_bytes() <= 2 * 1024 * 1024);
+        let batch = reader.read().unwrap();
+        assert_eq!(batch.dimensions().point_count(), 2);
+        let PointColumn::F64(x) = batch.column("x").unwrap() else {
+            panic!("x is not f64")
+        };
+        assert_eq!(x, &[1000.25, 1001.0]);
+    }
 }
 
 #[test]

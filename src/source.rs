@@ -3,6 +3,7 @@
 use std::io::{self, Read, Seek, SeekFrom};
 
 const MCAP_MAGIC: &[u8; 8] = b"\x89MCAP0\r\n";
+const LAS_MAGIC: &[u8; 4] = b"LASF";
 /// Maximum bytes examined while looking for the first meaningful PCD directive.
 const MAX_PCD_SIGNATURE_BYTES: usize = 64 * 1024;
 const VERSION_KEYWORD: &[u8] = b"VERSION";
@@ -13,6 +14,7 @@ const VERSION_VALUE: &[u8] = b"0.7";
 pub(crate) enum SourceKind {
     Mcap,
     Pcd,
+    Las,
 }
 
 /// Probe only the bytes needed to route a seekable Source, then rewind it.
@@ -42,6 +44,9 @@ fn probe_kind_at_current_position(source: &mut impl Read) -> io::Result<SourceKi
     }
     if magic_len == magic.len() && &magic == MCAP_MAGIC {
         return Ok(SourceKind::Mcap);
+    }
+    if magic_len >= LAS_MAGIC.len() && &magic[..LAS_MAGIC.len()] == LAS_MAGIC {
+        return Ok(SourceKind::Las);
     }
 
     let mut prefix = magic[..magic_len].iter().copied();
@@ -153,6 +158,7 @@ mod tests {
     fn content_wins_over_filename_independent_routing() {
         for (bytes, expected) in [
             (b"\x89MCAP0\r\nrest".as_slice(), SourceKind::Mcap),
+            (b"LASFrest".as_slice(), SourceKind::Las),
             (
                 b"# arbitrary comment\nVERSION 0.7\nFIELDS x\n".as_slice(),
                 SourceKind::Pcd,

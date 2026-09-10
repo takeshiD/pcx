@@ -23,18 +23,18 @@ description: What pcx implements today and what comes next.
 
 - faithful one-message encoded MCAP passthrough.
 - strict ASCII and little-endian-binary PCD reader exposed for Static Cloud rendering.
-- MCAP Point Frame and PCD Static Cloud `pcx render` with bounded CPU projection and
+- MCAP Point Frame and PCD/LAS/LAZ Static Cloud `pcx render` with bounded CPU projection and
   Unicode/ANSI, Kitty, and Sixel output.
+- bounded synchronous LAS/LAZ reader and writer adapters, with Static Cloud
+  reading exposed through `pcx render`.
 
 ## Later milestones
 
 - **Reduction:** field selection, crop, statistics and frame-local voxel sampling.
-- **Formats:** PLY CLI integration and LAS/LAZ CLI integration.
+- **Formats:** PLY CLI integration and LAS/LAZ conversion commands.
 
 The scalar-vertex PLY reader/writer adapter is implemented behind the common
 schema; a user-facing command is not yet exposed.
-The bounded LAS/LAZ reader/writer adapter is also implemented behind the
-common schema; its user-facing commands remain future work.
 
 - **Terminal rendering:** deterministic CPU rasterization, conservative
   capability selection, and bounded Unicode, Kitty, and Sixel output are

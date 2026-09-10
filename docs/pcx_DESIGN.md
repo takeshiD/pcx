@@ -40,10 +40,10 @@ covered by committed end-to-end fixtures.
 ### 2.2 Later phases
 
 Field selection, crop, statistics, frame-local voxel reduction, and bounded
-LAS/LAZ library I/O are available after v0.1. The strict PCD reader is exposed
-for Static Cloud terminal rendering. The faithful PLY adapter and one-message
-MCAP container passthrough are also available; remaining format CLI integrations
-may follow later. The CPU rasterizer,
+LAS/LAZ library I/O are available after v0.1 and, together with the strict PCD
+reader, are exposed for Static Cloud terminal rendering. The faithful PLY
+adapter and one-message MCAP container passthrough are also available;
+remaining format conversion CLI integrations may follow later. The CPU rasterizer,
 capability selection, and Unicode, Kitty, and Sixel backends are implemented
 through the one-shot render command.
 
@@ -222,6 +222,10 @@ and write bounded common-schema batches synchronously. Keep scale/offset, CRS
 and the complete LAS header alongside the Static Cloud; expose standard
 attributes as typed Point Fields and retain Extra Bytes plus their descriptors.
 Require category-specific authorization before coordinate quantization.
+`pcx render INPUT.las|INPUT.laz` uses the declared point count as a bounded
+whole-cloud batch, plans it together with projection and terminal encoding
+before decoding, and refuses clouds that cannot fit instead of independently
+fitting partial batches.
 
 ## 10. Operators
 

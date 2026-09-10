@@ -26,12 +26,12 @@ description: 現在利用できる機能と今後の順序。
 - **利用可能なFormat追加:** Static Cloud renderingから利用できるstrict ASCII／
   little-endian binary PCD reader adapter。
 - **利用可能なTerminal追加:** bounded CPU projectionとUnicode／ANSI、Kitty、Sixel
-  出力を持つMCAP Point Frame／PCD Static Cloud対応の`pcx render` command。
-- **Formats:** PLY CLI integration、LAS/LAZ CLI integration。
+  出力を持つMCAP Point Frame／PCD／LAS／LAZ Static Cloud対応の`pcx render` command。
+- **利用可能なFormat追加:** bounded synchronous LAS/LAZ reader／writer adapter。
+  Static Cloud readは`pcx render`から利用できます。
+- **Formats:** PLY CLI integration、LAS/LAZ conversion command。
 
 scalar-vertex PLY reader/writer adapter は共通 schema の背後に実装済みですが、
-user-facing command はまだ公開していません。
-bounded LAS/LAZ reader/writer adapter も共通 schema の背後に実装済みですが、
 user-facing command はまだ公開していません。
 
 - **Terminal rendering:** deterministicなCPU rasterization、conservativeなcapability

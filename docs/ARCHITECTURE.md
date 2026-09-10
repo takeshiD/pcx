@@ -210,7 +210,9 @@ For `pcx render`, the declared point count is used as the caller's single-batch
 bound. The complete Static Cloud memory, projection raster, and terminal
 encoder are planned together before decoding, so projection performs one
 global fit. If that complete bound exceeds `--memory-limit`, rendering is
-refused instead of fitting batches independently.
+refused instead of fitting batches independently. The decoded Static Cloud
+owns both its common-schema `PointBatch` and retained `SpatialMetadata`, keeping
+the complete LAS header alive throughout projection.
 LAZ uses the serial codec: decompression writes only into that bounded slab,
 and compression stages one raw point while the codec maintains fixed-size
 chunk state. Writers require a declared maximum point count so the growing LAZ

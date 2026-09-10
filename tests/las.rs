@@ -103,10 +103,21 @@ fn reads_pdal_laz_with_the_same_mapping_and_bound() {
 #[test]
 fn static_cloud_reader_preflights_and_decodes_one_complete_batch() {
     for source in [LAS, LAZ] {
+        let expected_header = las::Header::new(&mut Cursor::new(source)).unwrap();
         let reader = StaticCloudReader::new(Cursor::new(source), 2 * 1024 * 1024).unwrap();
         assert_eq!(reader.dimensions().point_count(), 2);
         assert!(reader.managed_peak_bytes() <= 2 * 1024 * 1024);
-        let batch = reader.read().unwrap();
+        let cloud = reader.read().unwrap();
+        assert_eq!(cloud.spatial_metadata().header(), &expected_header);
+        assert_eq!(cloud.spatial_metadata().scale(), [0.01, 0.01, 0.01]);
+        assert_eq!(cloud.spatial_metadata().offset(), [1000.0, 2000.0, -10.0]);
+        assert!(
+            cloud
+                .spatial_metadata()
+                .crs_records()
+                .any(|record| record.data.windows(4).any(|window| window == b"4978"))
+        );
+        let batch = cloud.points();
         assert_eq!(batch.dimensions().point_count(), 2);
         let PointColumn::F64(x) = batch.column("x").unwrap() else {
             panic!("x is not f64")

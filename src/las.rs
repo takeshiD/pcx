@@ -376,6 +376,25 @@ pub struct StaticCloudReader {
     dimensions: PointDimensions,
 }
 
+/// One decoded LAS/LAZ Static Cloud and its retained spatial metadata.
+///
+/// The complete LAS header remains alive alongside the common-schema points,
+/// including coordinate transforms, CRS records, and Extra Bytes descriptors.
+pub struct StaticCloud {
+    points: PointBatch,
+    spatial_metadata: Arc<SpatialMetadata>,
+}
+
+impl StaticCloud {
+    pub const fn points(&self) -> &PointBatch {
+        &self.points
+    }
+
+    pub fn spatial_metadata(&self) -> &SpatialMetadata {
+        &self.spatial_metadata
+    }
+}
+
 impl StaticCloudReader {
     pub fn new<R>(mut input: R, memory_limit_bytes: usize) -> Result<Self, Error>
     where
@@ -405,8 +424,17 @@ impl StaticCloudReader {
     }
 
     /// Decode all declared points into the single batch admitted at construction.
-    pub fn read(mut self) -> Result<PointBatch, Error> {
-        let Some(points) = self.reader.next_batch()? else {
+    pub fn read(mut self) -> Result<StaticCloud, Error> {
+        let spatial_metadata = Arc::clone(&self.reader.metadata);
+        let points = if let Some(points) = self.reader.next_batch()? {
+            if points.dimensions() != self.dimensions {
+                return Err(Error::DeclaredPointCountMismatch {
+                    declared: self.dimensions.point_count(),
+                    actual: points.dimensions().point_count(),
+                });
+            }
+            points
+        } else {
             let columns = self
                 .reader
                 .mapping
@@ -419,21 +447,18 @@ impl StaticCloudReader {
                 "",
                 true,
             ));
-            return PointBatch::new(
+            PointBatch::new(
                 Arc::clone(&self.reader.mapping.schema),
                 metadata,
                 self.dimensions,
                 columns,
             )
-            .map_err(Error::Batch);
+            .map_err(Error::Batch)?
         };
-        if points.dimensions() != self.dimensions {
-            return Err(Error::DeclaredPointCountMismatch {
-                declared: self.dimensions.point_count(),
-                actual: points.dimensions().point_count(),
-            });
-        }
-        Ok(points)
+        Ok(StaticCloud {
+            points,
+            spatial_metadata,
+        })
     }
 }
 

@@ -103,6 +103,8 @@ ordered raw byteを保持します。
 headerの宣言点数をwhole Static Cloudのbatch boundとし、point decode前にprojection
 raster／encoderと合わせてplanningします。これによりglobalな範囲へ一度だけfitし、
 `--memory-limit`に収まらないcloudはpartial batchごとのfitを行わず拒否します。
+decode後もStatic Cloudはcommon-schema batchと完全なLAS headerを同時に所有し、
+projection完了までSpatialMetadataを保持します。
 
 ## 忠実性の契約
 

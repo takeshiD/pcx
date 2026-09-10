@@ -112,7 +112,9 @@ that cannot cover the raw slab, decoded columns and retained header records.
 For terminal rendering, the header-declared point count becomes the batch bound
 and the complete Static Cloud, projection raster, and encoder are planned
 together before point decoding. This preserves one global fit; oversized clouds
-are refused rather than fitted independently per batch.
+are refused rather than fitted independently per batch. The decoded Static
+Cloud retains the complete LAS header alongside its common-schema batch through
+projection.
 Serial LAZ compression avoids an unbounded parallel queue, and writers require
 a maximum point count so the chunk table is planned before output. Writing
 refuses coordinate quantization unless representation loss is explicitly

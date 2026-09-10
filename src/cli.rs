@@ -573,7 +573,7 @@ impl PreparedRenderPointData {
                 .map_err(pcd_read_failure),
             Self::Las(reader) => reader
                 .read()
-                .map(RenderPointData::Batch)
+                .map(RenderPointData::Las)
                 .map_err(las_read_failure),
         }
     }
@@ -582,6 +582,7 @@ impl PreparedRenderPointData {
 enum RenderPointData {
     View(PointView),
     Batch(PointBatch),
+    Las(las::StaticCloud),
 }
 
 impl RenderPointData {
@@ -589,6 +590,7 @@ impl RenderPointData {
         match self {
             Self::View(view) => plan.execute_view(view),
             Self::Batch(points) => plan.execute_batch(points),
+            Self::Las(cloud) => plan.execute_batch(cloud.points()),
         }
     }
 }

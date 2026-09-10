@@ -20,6 +20,9 @@ pcx render INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
 pcx render INPUT.pcd \
   [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
   [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
+pcx render INPUT.las|INPUT.laz \
+  [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
+  [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
 ```
 
 `pcx info`はPoint FrameをdecodeせずにMCAP Sourceをstreamingで調査します。human outputとversion付きJSONはstdoutへ出力され、成功時のstderrは空です。
@@ -54,10 +57,13 @@ pcx render INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
 pcx render INPUT.pcd \
   [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
   [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
+pcx render INPUT.las|INPUT.laz \
+  [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
+  [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
 ```
 
 MCAPでは`pcx render`は`extract`と同じTopic／Point Frame selectorを使います。
-PCDでは1件のStatic Cloudを読み取り、`--topic`、`--frame`、`--at`を拒否します。
+PCD／LAS／LAZでは1件のStatic Cloudを読み取り、`--topic`、`--frame`、`--at`を拒否します。
 選択したSourceをstrictにdecodeし、bounded rasterへdeterministicなCPU projectionを
 行い、1枚のinline renderingをstdoutへstreamingします。
 full-screen viewerやevent loopではないone-shot commandです。
@@ -80,7 +86,9 @@ rasterのdefaultは80×48 pixelで、Unicodeでは80 column×24 rowです。Sixe
 `--palette-limit`はdefault 256 colors、Kitty／Sixel用の`--payload-limit`はdefault
 64 MiBです。両graphics backendには固定の4096×4096 ceilingがあります。
 `--memory-limit`はdefault 512 MiBで、managed Source decode、projection、raster、
-encoder memoryをboundします。Source formatはfilename extensionではなくboundedな
+encoder memoryをboundします。LAS/LAZ renderingはdecode前にheaderの宣言点数から
+Static Cloud全体を1 bounded batchとしてadmitし、globalな範囲へ一度だけfitします。
+収まらないcloudはbatchごとにrenderせず拒否します。Source formatはfilename extensionではなくboundedな
 content signatureで判定するため、renameしたMCAP／PCDも元の挙動を維持します。
 
 human-readableな診断はstderr、成功した`--json`のデータと`pcx render`の1 frameは

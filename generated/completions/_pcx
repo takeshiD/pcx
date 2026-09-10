@@ -87,7 +87,7 @@ _arguments "${_arguments_options[@]}" : \
 '--memory-limit=[Hard managed-memory limit in bytes]:BYTES:_default' \
 '-h[Print help]' \
 '--help[Print help]' \
-':input -- MCAP Point Frame or PCD Static Cloud Source:_files' \
+':input -- MCAP Point Frame or PCD, LAS, or LAZ Static Cloud Source:_files' \
 && ret=0
 ;;
 (help)
@@ -142,7 +142,7 @@ _pcx_commands() {
 'topics:Discover Topics, MCAP Channels, Schemas, and message counts' \
 'extract:Extract exactly one ROS 2 PointCloud2 Point Frame as PCD' \
 'passthrough:Copy one selected encoded message into a faithful reduced MCAP' \
-'render:Render one MCAP Point Frame or PCD Static Cloud to stdout' \
+'render:Render one MCAP Point Frame or PCD, LAS, or LAZ Static Cloud to stdout' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'pcx commands' commands "$@"
@@ -159,7 +159,7 @@ _pcx__help_commands() {
 'topics:Discover Topics, MCAP Channels, Schemas, and message counts' \
 'extract:Extract exactly one ROS 2 PointCloud2 Point Frame as PCD' \
 'passthrough:Copy one selected encoded message into a faithful reduced MCAP' \
-'render:Render one MCAP Point Frame or PCD Static Cloud to stdout' \
+'render:Render one MCAP Point Frame or PCD, LAS, or LAZ Static Cloud to stdout' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'pcx help commands' commands "$@"

@@ -100,11 +100,10 @@ container pipeline to copy one Topic-selected encoded message without point
 decoding.
 
 Terminal rendering enters the same semantic pipeline as either an MCAP-backed
-`PointView` or a PCD-backed `PointBatch`. A PCD Source is one Static Cloud and
-therefore has no Topic or Point Frame selector. The CLI only routes by Source
-kind; PCD parsing, validation, and allocation planning remain inside the deep
-PCD adapter. Future static-format adapters can supply bounded `PointBatch`
-values to the same projection interface.
+`PointView` or a PCD/LAS/LAZ-backed `PointBatch`. A static-format Source is one
+Static Cloud and therefore has no Topic or Point Frame selector. The CLI only
+routes by Source kind; parsing, validation, and allocation planning remain
+inside each deep format adapter.
 
 Source kind is detected from bounded content signatures, with MCAP magic taking
 precedence and unknown content retaining the historical MCAP probe path.
@@ -207,6 +206,19 @@ explicitly authorized.
 
 The read preflight accounts for a reusable raw point slab, all decoded
 columns, column tables, and retained header records before allocating a batch.
+Before calling the official `las` header parser, a fixed-buffer seekable probe
+walks the fixed header and every 54-byte VLR and 60-byte EVLR header. Checked
+declared payload lengths, header/VLR/point padding, and record structures must
+fit the memory limit before variable data can be read or allocated. The probe
+also supplies the Static Cloud point count, avoiding an additional allocating
+header parse.
+For `pcx render`, the declared point count is used as the caller's single-batch
+bound. The complete Static Cloud memory, projection raster, and terminal
+encoder are planned together before decoding, so projection performs one
+global fit. If that complete bound exceeds `--memory-limit`, rendering is
+refused instead of fitting batches independently. The decoded Static Cloud
+owns both its common-schema `PointBatch` and retained `SpatialMetadata`, keeping
+the complete LAS header alive throughout projection.
 LAZ uses the serial codec: decompression writes only into that bounded slab,
 and compression stages one raw point while the codec maintains fixed-size
 chunk state. Writers require a declared maximum point count so the growing LAZ

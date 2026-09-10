@@ -1,16 +1,18 @@
 # Terminal Capability and Rendering Contract
 
 Status: capability selection, the Unicode, Kitty, and Sixel encoders, and the
-MCAP Point Frame/PCD Static Cloud `pcx render` CLI integration are implemented.
+MCAP Point Frame/PCD/LAS/LAZ Static Cloud `pcx render` CLI integration are implemented.
 
 ## CLI integration
 
 `pcx render INPUT.mcap --topic TOPIC` selects exactly one ROS 2
 `PointCloud2` Point Frame with the established, mutually exclusive `--frame N`
-or `--at DURATION` selector. `pcx render INPUT.pcd` instead reads one Static
-Cloud and rejects temporal selectors. It strictly decodes that Source, performs
-the
-terminal-neutral CPU projection documented in [`PROJECTION.md`](./PROJECTION.md),
+or `--at DURATION` selector. `pcx render INPUT.pcd|INPUT.las|INPUT.laz` instead
+reads one Static Cloud and rejects temporal selectors. LAS/LAZ rendering
+preflights the complete header-declared cloud with projection and encoder
+memory before decoding, preserving one global projection fit. It strictly
+decodes that Source, performs the terminal-neutral CPU projection documented in
+[`PROJECTION.md`](./PROJECTION.md),
 and streams one inline rendering to stdout. The command is synchronous and
 frame-local; it does not enter an alternate screen or run an interactive event
 loop.

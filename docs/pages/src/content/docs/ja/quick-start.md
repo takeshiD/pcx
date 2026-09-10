@@ -43,15 +43,18 @@ Kitty／Sixelをautomaticには許可しません。interactiveなtext-cell rend
 `--backend unicode`を使います。stdoutをredirectした場合、automatic outputは
 ANSI／graphics protocol escapeを含まないdeterministicなmonochrome Unicodeです。
 
-## PCD Static Cloudをrender
+## Static Cloudをrender
 
 ```bash
 pcx render tests/fixtures/valid/pointcloud2-ascii.pcd --width 32 --height 12
+pcx render tests/fixtures/valid/las-pdal.las --width 32 --height 12
+pcx render tests/fixtures/valid/las-pdal.laz --width 32 --height 12
 ```
 
-PCD Static Cloudには`--topic`、`--frame`、`--at`を指定しません。対応するASCII／
-little-endian binary PCD subsetを読み取り、MCAP renderingと同じbounded projection／
-terminal output policyを適用します。
+Static Cloudには`--topic`、`--frame`、`--at`を指定しません。対応するPCD subsetと
+LAS/LAZを読み取り、MCAP renderingと同じbounded projection／terminal output policyを
+適用します。LAS/LAZはglobalな範囲へ一度だけfitし、宣言されたcloud全体が
+`--memory-limit`に収まる必要があります。
 
 cloud clientではなくshellで転送します。
 

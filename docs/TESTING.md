@@ -68,12 +68,19 @@ fixture.mcap
 
 Static-format CLI coverage also renders the reviewed ASCII and little-endian
 binary PCD fixtures through `pcx render`, compares their deterministic non-TTY
-output, and verifies that unsupported encodings and insufficient memory fail
-before rendered bytes are written. A valid-header/truncated-payload case proves
-that combined memory refusal precedes payload decoding, while renamed fixtures
+output, and renders the equivalent PDAL-produced LAS and LAZ fixtures to
+identical output. It verifies that selectors, malformed input, unsupported
+encodings, and insufficient memory fail before rendered bytes are written. A
+valid-header/truncated-payload case proves that combined memory refusal precedes
+payload decoding, while renamed fixtures
 prove that content signatures, not extensions, select the Source adapter. A
 one-byte memory limit is rejected before the PCD reader consumes any header
 byte, and Source signature probing is tested at its 64 KiB read ceiling.
+The LAS public Static Cloud seam is also checked against the complete source
+header, scale/offset, and CRS records after point decoding. Counting-reader
+tests give oversized header padding, VLR data, and a later EVLR data declaration
+real backing bytes, then prove that only fixed metadata headers are read before
+resource refusal.
 
 ## Fixtures
 

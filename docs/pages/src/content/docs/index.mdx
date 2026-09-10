@@ -18,7 +18,7 @@ hero:
 `pcx` helps robotics and LiDAR engineers understand a recording before moving gigabytes off a robot. It is designed as a single synchronous executable with bounded managed memory and a binary-safe stdout.
 
 <ul class="status-list">
-  <li class="status-card" data-state="available"><strong>Available</strong><span>MCAP inspection, one-frame PCD extraction, MCAP/PCD terminal rendering, and one-message MCAP passthrough.</span></li>
+  <li class="status-card" data-state="available"><strong>Available</strong><span>MCAP inspection, one-frame PCD extraction, MCAP/PCD/LAS/LAZ terminal rendering, and one-message MCAP passthrough.</span></li>
   <li class="status-card" data-state="planned"><strong>Planned next</strong><span>Reduction operators and additional format CLI integration.</span></li>
   <li class="status-card" data-state="out"><strong>Out of scope</strong><span>AWS/S3 clients, cloud credentials, daemon mode, GUI and ROS runtime.</span></li>
 </ul>
@@ -35,6 +35,7 @@ pcx topics run.mcap --json
 pcx extract run.mcap --topic /lidar/points --frame 0 -o frame.pcd
 pcx render run.mcap --topic /lidar/points --frame 0
 pcx render cloud.pcd
+pcx render cloud.laz
 ```
 
 The project is explicit about what exists today. Planned examples are labeled so that documentation never masquerades as implementation.

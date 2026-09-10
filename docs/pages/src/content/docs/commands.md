@@ -20,6 +20,9 @@ pcx render INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
 pcx render INPUT.pcd \
   [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
   [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
+pcx render INPUT.las|INPUT.laz \
+  [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
+  [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
 ```
 
 `pcx info` streams through an MCAP Source without decoding point frames. Human output and versioned JSON go to stdout; successful inspection leaves stderr empty.
@@ -56,11 +59,14 @@ pcx render INPUT.mcap --topic TOPIC (--frame INDEX | --at DURATION) \
 pcx render INPUT.pcd \
   [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
   [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
+pcx render INPUT.las|INPUT.laz \
+  [--backend auto|unicode|kitty|sixel] [--width PIXELS] [--height PIXELS] \
+  [--palette-limit COLORS] [--payload-limit BYTES] [--memory-limit BYTES]
 ```
 
 For MCAP, `pcx render` uses the same Topic and Point Frame selectors as
-`extract`. For PCD, it reads one Static Cloud and rejects `--topic`, `--frame`,
-and `--at`. It strictly decodes the selected Source, performs deterministic CPU
+`extract`. For PCD, LAS, and LAZ, it reads one Static Cloud and rejects
+`--topic`, `--frame`, and `--at`. It strictly decodes the selected Source, performs deterministic CPU
 projection into a bounded raster, and streams one inline rendering to stdout.
 It is a one-shot command, not a full-screen viewer or event loop.
 
@@ -83,7 +89,10 @@ defaults to 80×48 pixels, which Unicode packs into 80 columns by 24 rows.
 `--palette-limit` defaults to 256 colors for Sixel; `--payload-limit` defaults
 to 64 MiB for Kitty and Sixel. Both graphics backends have a fixed 4096×4096
 ceiling. `--memory-limit` defaults to 512 MiB and bounds managed Source decode,
-projection, raster, and encoder memory. Source format detection uses bounded
+projection, raster, and encoder memory. LAS/LAZ rendering admits the complete
+header-declared cloud as one bounded batch before decoding so one global fit is
+used; a cloud that does not fit is refused rather than rendered batch by batch.
+Source format detection uses bounded
 content signatures rather than filename extensions, so renamed MCAP and PCD
 files retain their behavior.
 

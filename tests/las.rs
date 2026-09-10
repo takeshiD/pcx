@@ -3,12 +3,64 @@
 
 use pcx_cli::core::point::{PointBatch, PointColumn, PointFrameMetadata, Timestamp};
 use pcx_cli::core::{FidelityLoss, LossPolicy};
-use pcx_cli::las::{Encoding, ReadLimits, Reader, WriteLimits, Writer};
-use std::io::{Cursor, Read, Seek};
-use std::sync::Arc;
+use pcx_cli::las::{Encoding, ReadLimits, Reader, StaticCloudReader, WriteLimits, Writer};
+use std::io::{self, Cursor, Read, Seek, SeekFrom};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
 const LAS: &[u8] = include_bytes!("fixtures/valid/las-pdal.las");
 const LAZ: &[u8] = include_bytes!("fixtures/valid/las-pdal.laz");
+const LAS_COMMON_PROBE_BYTES: usize = 111;
+
+struct CountingReader {
+    inner: Cursor<Vec<u8>>,
+    bytes_read: Arc<AtomicUsize>,
+}
+
+impl CountingReader {
+    fn new(bytes: Vec<u8>) -> (Self, Arc<AtomicUsize>) {
+        let bytes_read = Arc::new(AtomicUsize::new(0));
+        (
+            Self {
+                inner: Cursor::new(bytes),
+                bytes_read: Arc::clone(&bytes_read),
+            },
+            bytes_read,
+        )
+    }
+}
+
+impl Read for CountingReader {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        self.bytes_read.fetch_add(read, Ordering::Relaxed);
+        Ok(read)
+    }
+}
+
+impl Seek for CountingReader {
+    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+        self.inner.seek(position)
+    }
+}
+
+fn fixed_header(version_minor: u8, header_size: u16, point_offset: u32) -> Vec<u8> {
+    let mut bytes = vec![0; usize::from(header_size).max(107)];
+    bytes[..4].copy_from_slice(b"LASF");
+    bytes[24] = 1;
+    bytes[25] = version_minor;
+    bytes[94..96].copy_from_slice(&header_size.to_le_bytes());
+    bytes[96..100].copy_from_slice(&point_offset.to_le_bytes());
+    bytes[105..107].copy_from_slice(&20_u16.to_le_bytes());
+    for offset in [131, 139, 147] {
+        if offset + 8 <= bytes.len() {
+            bytes[offset..offset + 8].copy_from_slice(&0.01_f64.to_le_bytes());
+        }
+    }
+    bytes
+}
 
 fn limits(points: usize) -> ReadLimits {
     ReadLimits::new(points, 2 * 1024 * 1024).unwrap()
@@ -98,6 +150,32 @@ fn reads_pdal_las_through_the_common_schema() {
 #[test]
 fn reads_pdal_laz_with_the_same_mapping_and_bound() {
     read_fixture(LAZ);
+}
+
+#[test]
+fn static_cloud_reader_preflights_and_decodes_one_complete_batch() {
+    for source in [LAS, LAZ] {
+        let expected_header = las::Header::new(&mut Cursor::new(source)).unwrap();
+        let reader = StaticCloudReader::new(Cursor::new(source), 2 * 1024 * 1024).unwrap();
+        assert_eq!(reader.dimensions().point_count(), 2);
+        assert!(reader.managed_peak_bytes() <= 2 * 1024 * 1024);
+        let cloud = reader.read().unwrap();
+        assert_eq!(cloud.spatial_metadata().header(), &expected_header);
+        assert_eq!(cloud.spatial_metadata().scale(), [0.01, 0.01, 0.01]);
+        assert_eq!(cloud.spatial_metadata().offset(), [1000.0, 2000.0, -10.0]);
+        assert!(
+            cloud
+                .spatial_metadata()
+                .crs_records()
+                .any(|record| record.data.windows(4).any(|window| window == b"4978"))
+        );
+        let batch = cloud.points();
+        assert_eq!(batch.dimensions().point_count(), 2);
+        let PointColumn::F64(x) = batch.column("x").unwrap() else {
+            panic!("x is not f64")
+        };
+        assert_eq!(x, &[1000.25, 1001.0]);
+    }
 }
 
 #[test]
@@ -276,4 +354,41 @@ fn malformed_and_unplannable_inputs_fail_without_a_batch() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn header_storage_is_resource_refused_before_variable_data_is_read() {
+    let oversized_padding = fixed_header(4, u16::MAX, u32::from(u16::MAX));
+
+    let vlr_data_len = u16::MAX;
+    let point_offset = 227_u32 + 54 + u32::from(vlr_data_len);
+    let mut oversized_vlr = fixed_header(2, 227, point_offset);
+    oversized_vlr[100..104].copy_from_slice(&1_u32.to_le_bytes());
+    oversized_vlr.resize(227 + 54, 0);
+    oversized_vlr[247..249].copy_from_slice(&vlr_data_len.to_le_bytes());
+    oversized_vlr.resize(point_offset as usize, 0);
+
+    let evlr_data_len = u64::from(u16::MAX);
+    let mut oversized_evlr = fixed_header(4, 375, 375);
+    oversized_evlr[235..243].copy_from_slice(&375_u64.to_le_bytes());
+    oversized_evlr[243..247].copy_from_slice(&2_u32.to_le_bytes());
+    oversized_evlr.resize(375 + 2 * 60, 0);
+    oversized_evlr[455..463].copy_from_slice(&evlr_data_len.to_le_bytes());
+    oversized_evlr.resize(375 + 2 * 60 + evlr_data_len as usize, 0);
+
+    for (bytes, maximum_probe_read) in [
+        (oversized_padding, LAS_COMMON_PROBE_BYTES),
+        (oversized_vlr, LAS_COMMON_PROBE_BYTES + 54),
+        (oversized_evlr, LAS_COMMON_PROBE_BYTES + 20 + 2 * 60),
+    ] {
+        let (input, bytes_read) = CountingReader::new(bytes);
+        let error = Reader::new(input, ReadLimits::new(1, 8 * 1024).unwrap())
+            .err()
+            .expect("oversized header storage must fail");
+        assert!(
+            matches!(error, pcx_cli::las::Error::MemoryLimitExceeded { .. }),
+            "unexpected preflight error: {error}"
+        );
+        assert!(bytes_read.load(Ordering::Relaxed) <= maximum_probe_read);
+    }
 }

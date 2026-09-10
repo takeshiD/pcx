@@ -44,15 +44,18 @@ Use `--backend unicode` for an explicit interactive text-cell rendering. When
 stdout is redirected, automatic output is deterministic monochrome Unicode
 without ANSI or graphics-protocol escape sequences.
 
-## Render a PCD Static Cloud
+## Render a Static Cloud
 
 ```bash
 pcx render tests/fixtures/valid/pointcloud2-ascii.pcd --width 32 --height 12
+pcx render tests/fixtures/valid/las-pdal.las --width 32 --height 12
+pcx render tests/fixtures/valid/las-pdal.laz --width 32 --height 12
 ```
 
-PCD Static Clouds do not use `--topic`, `--frame`, or `--at`. The reader accepts
-the supported ASCII and little-endian binary PCD subset and applies the same
-bounded projection and terminal output policy as MCAP rendering.
+Static Clouds do not use `--topic`, `--frame`, or `--at`. The readers accept the
+supported PCD subset and LAS/LAZ, then apply the same bounded projection and
+terminal output policy as MCAP rendering. LAS and LAZ use one global fit and
+must fit as a complete declared cloud under `--memory-limit`.
 
 Transfer output with the shell rather than a cloud client:
 

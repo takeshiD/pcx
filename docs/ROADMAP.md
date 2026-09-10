@@ -39,6 +39,7 @@ unused because GitHub returned an error during initial backlog creation.
 - [#23 MCAP output and container passthrough](https://github.com/takeshiD/pcx/issues/23)
 - [#24 PLY I/O](https://github.com/takeshiD/pcx/issues/24)
 - [#25 LAS and LAZ I/O](https://github.com/takeshiD/pcx/issues/25)
+- [#87 LAS and LAZ Static Cloud rendering](https://github.com/takeshiD/pcx/issues/87) — implemented
 
 ## v0.4 — Terminal
 

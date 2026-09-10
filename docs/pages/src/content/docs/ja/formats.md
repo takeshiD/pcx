@@ -13,10 +13,19 @@ description: 採用するフォーマット境界と忠実性の規則。
 | PLY 1.0 | ASCII と両方の binary byte order の scalar vertex | ASCII と両方の binary byte order | adapter は利用可能、CLI command は未実装 |
 | LAS/LAZ | bounded synchronous batch | bounded synchronous batch | Static Cloudとして`pcx render`から読取可能 |
 | Terminal raster | 選択した1 MCAP Point FrameまたはPCD／LAS／LAZ Static Cloud | Unicode／ANSI、Kitty、Sixel | `pcx render`で利用可能 |
+| PNG | なし | projection済みRGBA8可視化 | `pcx snapshot`で利用可能 |
 
 LAS/LAZのconversion commandは後続です。common CPU projection、conservativeなterminal
 capability selection、Unicode、Kitty、Sixel backendは`pcx render`から利用できます。
 AWS/S3転送やcloud credentialは製品機能に含めません。
+
+## projection済みPNG snapshot
+
+`pcx snapshot`はcommon XY orthographic rasterをnon-interlaced RGBA8 PNGとして
+streamingします。occupied cellはopaque white、empty cellはtransparentです。
+encoderは固定8 KiB scratchを使いmanaged-memory preflightへ参加し、file outputは
+atomicにcommitします。PNGは可視化用side outputだけであり、depth map、LiDAR range
+image、点群の復元、PNG inputには対応しません。
 
 ## Terminal rendering
 

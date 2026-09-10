@@ -1,0 +1,40 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH pcx-snapshot 1  "pcx 0.1.3"
+.SH NAME
+pcx\-snapshot \- Write a projected ROS 2 PointCloud2 Point Frame as an RGBA8 PNG
+.SH SYNOPSIS
+\fBpcx snapshot\fR <\fB\-\-topic\fR> [\fB\-\-frame\fR] [\fB\-\-at\fR] <\fB\-o\fR|\fB\-\-output\fR> [\fB\-\-force\fR] [\fB\-\-width\fR] [\fB\-\-height\fR] [\fB\-\-memory\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT.mcap\fR>
+.SH DESCRIPTION
+Write a projected ROS 2 PointCloud2 Point Frame as an RGBA8 PNG
+.SH OPTIONS
+.TP
+\fB\-\-topic\fR \fI<TOPIC>\fR
+Topic whose messages are counted as Point Frames
+.TP
+\fB\-\-frame\fR \fI<INDEX>\fR
+Zero\-based Point Frame index after Topic selection
+.TP
+\fB\-\-at\fR \fI<DURATION>\fR
+First Point Frame at or after this duration from recording start
+.TP
+\fB\-o\fR, \fB\-\-output\fR \fI<PATH|\->\fR
+Output PNG path, or \*(Aq\-\*(Aq for binary\-safe stdout
+.TP
+\fB\-\-force\fR
+Replace an existing output file
+.TP
+\fB\-\-width\fR \fI<PIXELS>\fR [default: 80]
+Projection raster width in pixels
+.TP
+\fB\-\-height\fR \fI<PIXELS>\fR [default: 48]
+Projection raster height in pixels
+.TP
+\fB\-\-memory\-limit\fR \fI<BYTES>\fR [default: 536870912]
+Hard managed\-memory limit in bytes
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIINPUT.mcap\fR>
+MCAP Source containing the Point Frame

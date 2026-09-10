@@ -49,6 +49,7 @@ unused because GitHub returned an error during initial backlog creation.
 - [#29 Capability detection and fallback](https://github.com/takeshiD/pcx/issues/29) — implemented policy seam
 - [#30 Sixel rendering](https://github.com/takeshiD/pcx/issues/30) — implemented encoder seam
 - [#80 Terminal rendering CLI integration](https://github.com/takeshiD/pcx/issues/80) — implemented
+- [#88 Projected PNG snapshots](https://github.com/takeshiD/pcx/issues/88) — implemented
 
 ## Hardening
 

@@ -56,6 +56,15 @@ LAS/LAZを読み取り、MCAP renderingと同じbounded projection／terminal ou
 適用します。LAS/LAZはglobalな範囲へ一度だけfitし、宣言されたcloud全体が
 `--memory-limit`に収まる必要があります。
 
+## PNG snapshotを書く
+
+```bash
+pcx snapshot run.mcap --topic /lidar/points --frame 0 -o frame.png
+```
+
+PNGはempty pixelをtransparentにしたprojection済みRGBA8可視化で、depth mapや
+losslessな点群fileではありません。
+
 cloud clientではなくshellで転送します。
 
 ```bash

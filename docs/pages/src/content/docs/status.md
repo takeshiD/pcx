@@ -27,6 +27,7 @@ description: What pcx implements today and what comes next.
   Unicode/ANSI, Kitty, and Sixel output.
 - bounded synchronous LAS/LAZ reader and writer adapters, with Static Cloud
   reading exposed through `pcx render`.
+- one-Point-Frame `pcx snapshot` command with bounded deterministic RGBA8 PNG output.
 
 ## Later milestones
 

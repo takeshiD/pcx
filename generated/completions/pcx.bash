@@ -31,6 +31,9 @@ _pcx() {
             pcx,render)
                 cmd="pcx__render"
                 ;;
+            pcx,snapshot)
+                cmd="pcx__snapshot"
+                ;;
             pcx,topics)
                 cmd="pcx__topics"
                 ;;
@@ -49,6 +52,9 @@ _pcx() {
             pcx__help,render)
                 cmd="pcx__help__render"
                 ;;
+            pcx__help,snapshot)
+                cmd="pcx__help__snapshot"
+                ;;
             pcx__help,topics)
                 cmd="pcx__help__topics"
                 ;;
@@ -59,7 +65,7 @@ _pcx() {
 
     case "${cmd}" in
         pcx)
-            opts="-h -V --help --version info topics extract passthrough render help"
+            opts="-h -V --help --version info topics extract passthrough render snapshot help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -115,7 +121,7 @@ _pcx() {
             return 0
             ;;
         pcx__help)
-            opts="info topics extract passthrough render help"
+            opts="info topics extract passthrough render snapshot help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -185,6 +191,20 @@ _pcx() {
             return 0
             ;;
         pcx__help__render)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        pcx__help__snapshot)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -304,6 +324,52 @@ _pcx() {
                     return 0
                     ;;
                 --payload-limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --memory-limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        pcx__snapshot)
+            opts="-o -h --topic --frame --at --output --force --width --height --memory-limit --help <INPUT.mcap>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --topic)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --frame)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --at)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --output)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -o)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --width)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --height)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

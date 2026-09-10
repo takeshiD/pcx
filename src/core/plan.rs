@@ -284,7 +284,9 @@ impl Planner {
 
         let mode = match job.kind() {
             JobKind::Info | JobKind::Topics | JobKind::Passthrough => ExecutionMode::Container,
-            JobKind::Extract | JobKind::Render => ExecutionMode::SemanticPointFrame,
+            JobKind::Extract | JobKind::Render | JobKind::Snapshot => {
+                ExecutionMode::SemanticPointFrame
+            }
         };
         let breakdown = ManagedMemoryBreakdown {
             retained_input_bytes,

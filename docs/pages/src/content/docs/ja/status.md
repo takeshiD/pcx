@@ -29,6 +29,8 @@ description: 現在利用できる機能と今後の順序。
   出力を持つMCAP Point Frame／PCD／LAS／LAZ Static Cloud対応の`pcx render` command。
 - **利用可能なFormat追加:** bounded synchronous LAS/LAZ reader／writer adapter。
   Static Cloud readは`pcx render`から利用できます。
+- **利用可能なFormat追加:** bounded deterministic RGBA8 PNGを出力する1 Point Frameの
+  `pcx snapshot` command。
 - **Formats:** PLY CLI integration、LAS/LAZ conversion command。
 
 scalar-vertex PLY reader/writer adapter は共通 schema の背後に実装済みですが、

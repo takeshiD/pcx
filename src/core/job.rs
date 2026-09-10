@@ -11,6 +11,7 @@ pub enum JobKind {
     Extract,
     Passthrough,
     Render,
+    Snapshot,
 }
 
 /// A validated local Source description.
@@ -110,6 +111,11 @@ enum Operation {
     Render {
         selection: Option<RenderSelection>,
     },
+    Snapshot {
+        topic: String,
+        selector: FrameSelector,
+        destination: Destination,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -207,6 +213,27 @@ impl JobSpec {
         }
     }
 
+    /// Describe writing one projected Point Frame as a PNG investigation artifact.
+    pub fn snapshot(
+        source: SourceSpec,
+        topic: impl Into<String>,
+        selector: FrameSelector,
+        destination: Destination,
+    ) -> Result<Self> {
+        let topic = topic.into();
+        if topic.trim().is_empty() {
+            return Err(Error::new(ErrorCategory::Usage, "Topic must not be empty"));
+        }
+        Ok(Self {
+            source,
+            operation: Operation::Snapshot {
+                topic,
+                selector,
+                destination,
+            },
+        })
+    }
+
     pub const fn kind(&self) -> JobKind {
         match self.operation {
             Operation::Info => JobKind::Info,
@@ -214,6 +241,7 @@ impl JobSpec {
             Operation::Extract { .. } => JobKind::Extract,
             Operation::Passthrough { .. } => JobKind::Passthrough,
             Operation::Render { .. } => JobKind::Render,
+            Operation::Snapshot { .. } => JobKind::Snapshot,
         }
     }
 
@@ -231,7 +259,8 @@ impl JobSpec {
             Operation::Info
             | Operation::Topics
             | Operation::Passthrough { .. }
-            | Operation::Render { .. } => None,
+            | Operation::Render { .. }
+            | Operation::Snapshot { .. } => None,
         }
     }
 
@@ -245,7 +274,8 @@ impl JobSpec {
             Operation::Info
             | Operation::Topics
             | Operation::Extract { .. }
-            | Operation::Render { .. } => None,
+            | Operation::Render { .. }
+            | Operation::Snapshot { .. } => None,
         }
     }
 
@@ -258,7 +288,23 @@ impl JobSpec {
             | Operation::Topics
             | Operation::Extract { .. }
             | Operation::Passthrough { .. }
+            | Operation::Snapshot { .. }
             | Operation::Render { selection: None } => None,
+        }
+    }
+
+    pub fn snapshot_selection(&self) -> Option<(&str, FrameSelector, &Destination)> {
+        match &self.operation {
+            Operation::Snapshot {
+                topic,
+                selector,
+                destination,
+            } => Some((topic, *selector, destination)),
+            Operation::Info
+            | Operation::Topics
+            | Operation::Extract { .. }
+            | Operation::Passthrough { .. }
+            | Operation::Render { .. } => None,
         }
     }
 }
@@ -289,14 +335,22 @@ mod tests {
             Destination::stdout(),
         )
         .expect("valid passthrough");
-        let render = JobSpec::render(source, "/lidar/points", FrameSelector::Index(0))
+        let render = JobSpec::render(source.clone(), "/lidar/points", FrameSelector::Index(0))
             .expect("valid render");
+        let snapshot = JobSpec::snapshot(
+            source,
+            "/lidar/points",
+            FrameSelector::Index(0),
+            Destination::stdout(),
+        )
+        .expect("valid snapshot");
 
         assert_eq!(info.kind(), JobKind::Info);
         assert_eq!(topics.kind(), JobKind::Topics);
         assert_eq!(extract.kind(), JobKind::Extract);
         assert_eq!(passthrough.kind(), JobKind::Passthrough);
         assert_eq!(render.kind(), JobKind::Render);
+        assert_eq!(snapshot.kind(), JobKind::Snapshot);
         assert_eq!(extract.source().path(), Path::new("recording.bin"));
         assert_eq!(
             extract.extraction(),
@@ -319,11 +373,18 @@ mod tests {
             render.render_selection(),
             Some(("/lidar/points", FrameSelector::Index(0)))
         );
-
         let static_render =
             JobSpec::render_static(SourceSpec::file("cloud.pcd").expect("valid static Source"));
         assert_eq!(static_render.kind(), JobKind::Render);
         assert_eq!(static_render.render_selection(), None);
+        assert_eq!(
+            snapshot.snapshot_selection(),
+            Some((
+                "/lidar/points",
+                FrameSelector::Index(0),
+                &Destination::stdout()
+            ))
+        );
     }
 
     #[test]
